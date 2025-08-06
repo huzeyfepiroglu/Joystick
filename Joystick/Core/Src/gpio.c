@@ -54,10 +54,12 @@ void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : PCPin PCPin PCPin PCPin
                            PCPin PCPin PCPin PCPin
-                           PCPin PCPin PCPin PCPin */
-  GPIO_InitStruct.Pin = BTN_30_Pin|BTN_29_Pin|BTN_28_Pin|BTN_27_Pin
-                          |BTN_26_Pin|BTN_25_Pin|BTN_24_Pin|BTN_04_Pin
-                          |BTN_05_Pin|BTN_06_Pin|BTN_07_Pin|BTN_12_Pin;
+                           PCPin PCPin PCPin PCPin
+                           PCPin PCPin */
+  GPIO_InitStruct.Pin = BTN_18_Pin|BTN_17_Pin|BTN_23_Pin|BTN_24_Pin
+                          |BTN_21_Pin|BTN_22_Pin|BTN_07_Pin|BTN_15_Pin
+                          |BTN_16_Pin|BTN_13_Pin|BTN_12_Pin|BTN_27_Pin
+                          |BTN_28_Pin|BTN_25_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -65,29 +67,29 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pins : PAPin PAPin PAPin PAPin
                            PAPin PAPin PAPin PAPin
                            PAPin */
-  GPIO_InitStruct.Pin = BTN_23_Pin|BTN_22_Pin|BTN_21_Pin|BTN_20_Pin
-                          |BTN_19_Pin|BTN_18_Pin|BTN_17_Pin|BTN_08_Pin
+  GPIO_InitStruct.Pin = BTN_08_Pin|BTN_05_Pin|BTN_06_Pin|BTN_03_Pin
+                          |BTN_19_Pin|BTN_01_Pin|BTN_02_Pin|BTN_29_Pin
                           |BTN_09_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PBPin PBPin PBPin PBPin
-                           PBPin PBPin PBPin */
-  GPIO_InitStruct.Pin = BTN_01_Pin|BTN_02_Pin|BTN_14_Pin|BTN_15_Pin
-                          |BTN_16_Pin|BTN_32_Pin|BTN_31_Pin;
+                           PBPin PBPin */
+  GPIO_InitStruct.Pin = BTN_04_Pin|BTN_20_Pin|BTN_26_Pin|BTN_32_Pin
+                          |BTN_31_Pin|BTN_30_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PDPin PDPin */
-  GPIO_InitStruct.Pin = BTN_03_Pin|BTN_13_Pin;
+  /*Configure GPIO pin : PtPin */
+  GPIO_InitStruct.Pin = BTN_14_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+  HAL_GPIO_Init(BTN_14_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PFPin PFPin */
-  GPIO_InitStruct.Pin = BTN_10_Pin|BTN_11_Pin;
+  GPIO_InitStruct.Pin = BTN_11_Pin|BTN_10_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);

@@ -134,7 +134,6 @@ void calculateJostickBorders(ConfigData* tempConfigData, joystickBorder* tempJoy
 void calculateAxisData(joystickBorder* tempJoystickBorder, uint32_t* tempAnADC_Value, int32_t* fittedAnAdc_Values, bool axisData);
 //calibration and and remote mood selection// 0 : remote_mode, 1: calibration mode
 uint8_t remoteMode = 1;
-uint32_t counter1 = 0;
 
 /* Private variables ---------------------------------------------------------*/
 /*
@@ -216,14 +215,16 @@ int main(void)
   MX_SDADC1_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
-  MX_USART3_UART_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 	HAL_Delay(1000);
 	checkBootloader();
 
 /*Baslangic için default config data atamasi*/
 //writeDefaultConfigPage();
-	HAL_UART_Receive_DMA(&huart3, &rxDataIn, 1);
+	HAL_TIM_Base_Start_IT(&htim2);
+	HAL_TIM_Base_Start_IT(&htim3);
+	HAL_UART_Receive_DMA(&huart1, &rxDataIn, 1);
 
 	//fingerAnalogread start
 	HAL_ADCEx_Calibration_Start(&hadc1);
@@ -241,6 +242,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  mainLoop();
+
   }
   /* USER CODE END 3 */
 }
@@ -258,10 +260,13 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV3;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL2;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -271,8 +276,8 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV2;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
@@ -280,10 +285,10 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART3|RCC_PERIPHCLK_ADC1
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_ADC1
                               |RCC_PERIPHCLK_SDADC;
-  PeriphClkInit.Usart3ClockSelection = RCC_USART3CLKSOURCE_PCLK1;
-  PeriphClkInit.SdadcClockSelection = RCC_SDADCSYSCLK_DIV8;
+  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_SYSCLK;
+  PeriphClkInit.SdadcClockSelection = RCC_SDADCSYSCLK_DIV4;
   PeriphClkInit.Adc1ClockSelection = RCC_ADC1PCLK2_DIV2;
 
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
@@ -710,6 +715,7 @@ void sampleDigitalInputs(digitalInput *digitalInputPtr)
 			}
 
 			tempDigitalInputPtr   ->  readFlag = false;
+
 			tempDigitalInputPtr++;
 		}
 	}
@@ -937,7 +943,7 @@ void sendAckUart(void)
 	txBufferACK[6] = 0x00;
 	txBufferACK[7] = 0x00;
 	txBufferACK[8] = CHECKSUM_ACK;
-	HAL_UART_Transmit(&huart3, (uint8_t*)txBufferACK, 9, 5000);
+	HAL_UART_Transmit(&huart1, (uint8_t*)txBufferACK, 9, 5000);
 }
 
 void checkCommand(uint8_t* rxBuffer)
@@ -981,7 +987,7 @@ void checkCommand(uint8_t* rxBuffer)
 			{
 				rsSendFormat[8] += rsSendFormat[i];
 			}
-			HAL_UART_Transmit(&huart3, (uint8_t*)rsSendFormat, 9, 5000);
+			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
 		break;
 
 		case COMMAND_XCALIB_READ:
@@ -997,7 +1003,7 @@ void checkCommand(uint8_t* rxBuffer)
 			{
 				rsSendFormat[8] += rsSendFormat[i];
 			}
-			HAL_UART_Transmit(&huart3, (uint8_t*)rsSendFormat, 9, 5000);
+			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
 
 		break;
 
@@ -1014,7 +1020,7 @@ void checkCommand(uint8_t* rxBuffer)
 			{
 				rsSendFormat[8] += rsSendFormat[i];
 			}
-			HAL_UART_Transmit(&huart3, (uint8_t*)rsSendFormat, 9, 5000);
+			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
 
 		break;
 			//default***********************
@@ -1031,7 +1037,7 @@ void checkCommand(uint8_t* rxBuffer)
 			{
 				rsSendFormat[8] += rsSendFormat[i];
 			}
-			HAL_UART_Transmit(&huart3, (uint8_t*)rsSendFormat, 9, 5000);
+			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
 		break;
 
 		case COMMAND_DEFAULT_XCALIB_READ:
@@ -1049,7 +1055,7 @@ void checkCommand(uint8_t* rxBuffer)
 				rsSendFormat[8] += rsSendFormat[i];
 			}
 
-			HAL_UART_Transmit(&huart3, (uint8_t*)rsSendFormat, 9, 5000);
+			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
 
 		break;
 
@@ -1066,7 +1072,7 @@ void checkCommand(uint8_t* rxBuffer)
 			{
 				rsSendFormat[8] += rsSendFormat[i];
 			}
-			HAL_UART_Transmit(&huart3, (uint8_t*)rsSendFormat, 9, 5000);
+			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
 
 		break;
 
@@ -1100,7 +1106,7 @@ void checkCommand(uint8_t* rxBuffer)
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-	counter1++;
+
 	unsigned int i;
 	tempRxDataIn = rxDataIn;
 

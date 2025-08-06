@@ -118,20 +118,20 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     PC5     ------> ADC1_IN15
     PB0     ------> ADC1_IN8
     */
-    GPIO_InitStruct.Pin = FIN_ADC1_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(FIN_ADC1_GPIO_Port, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = FIN_ADC2_Pin|FIN_ADC3_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
     GPIO_InitStruct.Pin = FIN_ADC4_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(FIN_ADC4_GPIO_Port, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = FIN_ADC3_Pin|FIN_ADC2_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = FIN_ADC4B0_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(FIN_ADC4B0_GPIO_Port, &GPIO_InitStruct);
 
     /* ADC1 DMA Init */
     /* ADC1 Init */
@@ -173,11 +173,11 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
     PC5     ------> ADC1_IN15
     PB0     ------> ADC1_IN8
     */
-    HAL_GPIO_DeInit(FIN_ADC1_GPIO_Port, FIN_ADC1_Pin);
-
-    HAL_GPIO_DeInit(GPIOC, FIN_ADC2_Pin|FIN_ADC3_Pin);
-
     HAL_GPIO_DeInit(FIN_ADC4_GPIO_Port, FIN_ADC4_Pin);
+
+    HAL_GPIO_DeInit(GPIOC, FIN_ADC3_Pin|FIN_ADC2_Pin);
+
+    HAL_GPIO_DeInit(FIN_ADC4B0_GPIO_Port, FIN_ADC4B0_Pin);
 
     /* ADC1 DMA DeInit */
     HAL_DMA_DeInit(adcHandle->DMA_Handle);
