@@ -4051,6 +4051,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
  8001bc0:	4b32      	ldr	r3, [pc, #200]	; (8001c8c <HAL_UART_RxCpltCallback+0xd8>)
  8001bc2:	701a      	strb	r2, [r3, #0]
 
+
 	if(rxBufferDataCounter==0 && rxDataIn==0xA5)
  8001bc4:	4b32      	ldr	r3, [pc, #200]	; (8001c90 <HAL_UART_RxCpltCallback+0xdc>)
  8001bc6:	681b      	ldr	r3, [r3, #0]
@@ -4172,11 +4173,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
  8001c70:	4b07      	ldr	r3, [pc, #28]	; (8001c90 <HAL_UART_RxCpltCallback+0xdc>)
  8001c72:	2200      	movs	r2, #0
  8001c74:	601a      	str	r2, [r3, #0]
-	}
 	else
 	{
 		rxBufferDataCounter = 0;
 	}
+
 }
  8001c76:	e003      	b.n	8001c80 <HAL_UART_RxCpltCallback+0xcc>
 		rxBufferDataCounter = 0;
@@ -5313,9 +5314,9 @@ void MX_USART1_UART_Init(void)
  8002204:	4b14      	ldr	r3, [pc, #80]	; (8002258 <MX_USART1_UART_Init+0x58>)
  8002206:	4a15      	ldr	r2, [pc, #84]	; (800225c <MX_USART1_UART_Init+0x5c>)
  8002208:	601a      	str	r2, [r3, #0]
-  huart1.Init.BaudRate = 9600;
+  huart1.Init.BaudRate = 115200;
  800220a:	4b13      	ldr	r3, [pc, #76]	; (8002258 <MX_USART1_UART_Init+0x58>)
- 800220c:	f44f 5216 	mov.w	r2, #9600	; 0x2580
+ 800220c:	f44f 32e1 	mov.w	r2, #115200	; 0x1c200
  8002210:	605a      	str	r2, [r3, #4]
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
  8002212:	4b11      	ldr	r3, [pc, #68]	; (8002258 <MX_USART1_UART_Init+0x58>)
@@ -5392,7 +5393,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
  800227a:	681b      	ldr	r3, [r3, #0]
  800227c:	4a2f      	ldr	r2, [pc, #188]	; (800233c <HAL_UART_MspInit+0xdc>)
  800227e:	4293      	cmp	r3, r2
- 8002280:	d157      	bne.n	8002332 <HAL_UART_MspInit+0xd2>
+ 8002280:	d158      	bne.n	8002334 <HAL_UART_MspInit+0xd4>
   {
   /* USER CODE BEGIN USART1_MspInit 0 */
 
@@ -5472,52 +5473,51 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
  80022f4:	4b13      	ldr	r3, [pc, #76]	; (8002344 <HAL_UART_MspInit+0xe4>)
  80022f6:	2200      	movs	r2, #0
  80022f8:	615a      	str	r2, [r3, #20]
-    hdma_usart1_rx.Init.Mode = DMA_NORMAL;
+    hdma_usart1_rx.Init.Mode = DMA_CIRCULAR;
  80022fa:	4b12      	ldr	r3, [pc, #72]	; (8002344 <HAL_UART_MspInit+0xe4>)
- 80022fc:	2200      	movs	r2, #0
+ 80022fc:	2220      	movs	r2, #32
  80022fe:	619a      	str	r2, [r3, #24]
-    hdma_usart1_rx.Init.Priority = DMA_PRIORITY_LOW;
+    hdma_usart1_rx.Init.Priority = DMA_PRIORITY_VERY_HIGH;
  8002300:	4b10      	ldr	r3, [pc, #64]	; (8002344 <HAL_UART_MspInit+0xe4>)
- 8002302:	2200      	movs	r2, #0
- 8002304:	61da      	str	r2, [r3, #28]
+ 8002302:	f44f 5240 	mov.w	r2, #12288	; 0x3000
+ 8002306:	61da      	str	r2, [r3, #28]
     if (HAL_DMA_Init(&hdma_usart1_rx) != HAL_OK)
- 8002306:	480f      	ldr	r0, [pc, #60]	; (8002344 <HAL_UART_MspInit+0xe4>)
- 8002308:	f000 fdfb 	bl	8002f02 <HAL_DMA_Init>
- 800230c:	4603      	mov	r3, r0
- 800230e:	2b00      	cmp	r3, #0
- 8002310:	d001      	beq.n	8002316 <HAL_UART_MspInit+0xb6>
+ 8002308:	480e      	ldr	r0, [pc, #56]	; (8002344 <HAL_UART_MspInit+0xe4>)
+ 800230a:	f000 fdfa 	bl	8002f02 <HAL_DMA_Init>
+ 800230e:	4603      	mov	r3, r0
+ 8002310:	2b00      	cmp	r3, #0
+ 8002312:	d001      	beq.n	8002318 <HAL_UART_MspInit+0xb8>
     {
       Error_Handler();
- 8002312:	f7ff fcc5 	bl	8001ca0 <Error_Handler>
+ 8002314:	f7ff fcc4 	bl	8001ca0 <Error_Handler>
     }
 
     __HAL_LINKDMA(uartHandle,hdmarx,hdma_usart1_rx);
- 8002316:	687b      	ldr	r3, [r7, #4]
- 8002318:	4a0a      	ldr	r2, [pc, #40]	; (8002344 <HAL_UART_MspInit+0xe4>)
- 800231a:	675a      	str	r2, [r3, #116]	; 0x74
- 800231c:	4a09      	ldr	r2, [pc, #36]	; (8002344 <HAL_UART_MspInit+0xe4>)
- 800231e:	687b      	ldr	r3, [r7, #4]
- 8002320:	6253      	str	r3, [r2, #36]	; 0x24
+ 8002318:	687b      	ldr	r3, [r7, #4]
+ 800231a:	4a0a      	ldr	r2, [pc, #40]	; (8002344 <HAL_UART_MspInit+0xe4>)
+ 800231c:	675a      	str	r2, [r3, #116]	; 0x74
+ 800231e:	4a09      	ldr	r2, [pc, #36]	; (8002344 <HAL_UART_MspInit+0xe4>)
+ 8002320:	687b      	ldr	r3, [r7, #4]
+ 8002322:	6253      	str	r3, [r2, #36]	; 0x24
 
     /* USART1 interrupt Init */
     HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
- 8002322:	2200      	movs	r2, #0
- 8002324:	2100      	movs	r1, #0
- 8002326:	2025      	movs	r0, #37	; 0x25
- 8002328:	f000 fdb1 	bl	8002e8e <HAL_NVIC_SetPriority>
+ 8002324:	2200      	movs	r2, #0
+ 8002326:	2100      	movs	r1, #0
+ 8002328:	2025      	movs	r0, #37	; 0x25
+ 800232a:	f000 fdb0 	bl	8002e8e <HAL_NVIC_SetPriority>
     HAL_NVIC_EnableIRQ(USART1_IRQn);
- 800232c:	2025      	movs	r0, #37	; 0x25
- 800232e:	f000 fdca 	bl	8002ec6 <HAL_NVIC_EnableIRQ>
+ 800232e:	2025      	movs	r0, #37	; 0x25
+ 8002330:	f000 fdc9 	bl	8002ec6 <HAL_NVIC_EnableIRQ>
   /* USER CODE BEGIN USART1_MspInit 1 */
 
   /* USER CODE END USART1_MspInit 1 */
   }
 }
- 8002332:	bf00      	nop
- 8002334:	3728      	adds	r7, #40	; 0x28
- 8002336:	46bd      	mov	sp, r7
- 8002338:	bd80      	pop	{r7, pc}
- 800233a:	bf00      	nop
+ 8002334:	bf00      	nop
+ 8002336:	3728      	adds	r7, #40	; 0x28
+ 8002338:	46bd      	mov	sp, r7
+ 800233a:	bd80      	pop	{r7, pc}
  800233c:	40013800 	.word	0x40013800
  8002340:	40021000 	.word	0x40021000
  8002344:	20000630 	.word	0x20000630

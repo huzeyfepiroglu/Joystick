@@ -22,5 +22,5 @@
 ../Core/Src/main.c:933:6:sendAckUart	1
 ../Core/Src/main.c:949:6:checkCommand	28
 ../Core/Src/main.c:1107:6:HAL_UART_RxCpltCallback	8
-../Core/Src/main.c:1152:6:writeDefaultConfigPage	4
-../Core/Src/main.c:1203:6:Error_Handler	1
+../Core/Src/main.c:1154:6:writeDefaultConfigPage	4
+../Core/Src/main.c:1205:6:Error_Handler	1

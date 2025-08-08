@@ -1110,6 +1110,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	unsigned int i;
 	tempRxDataIn = rxDataIn;
 
+
 	if(rxBufferDataCounter==0 && rxDataIn==0xA5)
 	{
 		rxBuffer[0] = rxDataIn;
@@ -1147,6 +1148,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	{
 		rxBufferDataCounter = 0;
 	}
+
 }
 
 void writeDefaultConfigPage(void)

@@ -22,5 +22,5 @@
 ../Core/Src/main.c:933:6:sendAckUart	24	static
 ../Core/Src/main.c:949:6:checkCommand	24	static
 ../Core/Src/main.c:1107:6:HAL_UART_RxCpltCallback	24	static
-../Core/Src/main.c:1152:6:writeDefaultConfigPage	80	static
-../Core/Src/main.c:1203:6:Error_Handler	4	static,ignoring_inline_asm
+../Core/Src/main.c:1154:6:writeDefaultConfigPage	80	static
+../Core/Src/main.c:1205:6:Error_Handler	4	static,ignoring_inline_asm
