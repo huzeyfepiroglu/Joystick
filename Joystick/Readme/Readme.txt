@@ -29,7 +29,6 @@ STLINK KONNEKTÖRÜ
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-
 COMMAND_MODSEL_WRITE 
 +---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
 |    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER 
@@ -42,7 +41,7 @@ COMMAND_MODSEL_WRITE
 KEY ID:	  A5	
 FUNCNUM:  01
 MODE:     REMOTE = 00 CALIBRATION= 01 
-CHECKNUM: BYTE2-BYTE9 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 COMMAND_XCALIB_WRITE 
 +---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
@@ -61,7 +60,7 @@ xMIN MSB: 16 BIT X EKSENİ MINIMUM VERİSİNİN EN ANLAMLI BİTİ
 xMIN LSB: 16 BIT X EKSENİ MINIMUM VERİSİNİN EN ANLAMSIZ BİTİ 
 xMID MSB: 16 BIT X EKSENİ MIDDLE VERİSİNİN EN ANLAMLI BİTİ 
 xMID LSB: 16 BIT X EKSENİ MIDDLE VERİSİNİN EN ANLAMSIZ BİTİ 
-CHECKNUM: BYTE2-BYTE9 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 COMMAND_YCALIB_WRITE 
 +---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
@@ -80,63 +79,214 @@ yMIN MSB: 16 BIT Y EKSENİ MINIMUM VERİSİNİN EN ANLAMLI BİTİ
 yMIN LSB: 16 BIT Y EKSENİ MINIMUM VERİSİNİN EN ANLAMSIZ BİTİ 
 yMID MSB: 16 BIT Y EKSENİ MIDDLE VERİSİNİN EN ANLAMLI BİTİ 
 yMID LSB: 16 BIT Y EKSENİ MIDDLE VERİSİNİN EN ANLAMSIZ BİTİ 
-CHECKNUM: BYTE2-BYTE9 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-aşağısı girilmedi
+COMMAND_MODSEL_READ 
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|  KEY ID | FUNCNUM |    X    |    X    |    X    |    X    |    X    |    X    |    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   81    |   00    |   00    |   00    |    00   |   00    |   00    |   00    |   7F    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
 
-		case COMMAND_DEBOUNCE_WRITE://debounce tarafi düzenlenecek
-		break;
+KEY ID:	  A5	
+FUNCNUM:  81
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
 
-		case COMMAND_MODSEL_READ:
-			rsSendFormat[0] = COMMAND_HEADER;
-			rsSendFormat[1] = COMMAND_MODSEL_READ;
-			rsSendFormat[2] = (*(uint32_t*)CONFIG_DATA_INTERFACE_OFFSET);;
-			rsSendFormat[3] = 0x00;
-			rsSendFormat[4] = 0x00;
-			rsSendFormat[5] = 0x00;
-			rsSendFormat[6] = 0x00;
-			rsSendFormat[7] = 0x00;
-			for(i = 1; i < 8; i++)
-			{
-				rsSendFormat[8] += rsSendFormat[i];
-			}
-			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
-		break;
+RESPONSE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+| HEADER  | FUNCNUM |  VALUE  |    X    |    X    |    X    |    X    |    X    |    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   81    |   00    |   00    |   00    |    00   |   00    |   00    |   00    |   7F    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
 
-		case COMMAND_XCALIB_READ:
-			rsSendFormat[0] = COMMAND_HEADER;
-			rsSendFormat[1] = COMMAND_XCALIB_READ;
-			rsSendFormat[2] = (*(uint32_t*)(CONFIG_DATA_X_MAXPOINT_OFFSET + 1));
-			rsSendFormat[3] = (*(uint32_t*)CONFIG_DATA_X_MAXPOINT_OFFSET);
-			rsSendFormat[4] = (*(uint32_t*)(CONFIG_DATA_X_MINPOINT_OFFSET + 1));
-			rsSendFormat[5] = (*(uint32_t*)CONFIG_DATA_X_MINPOINT_OFFSET);
-			rsSendFormat[6] = (*(uint32_t*)(CONFIG_DATA_X_MIDDLEPOINT_OFFSET + 1));
-			rsSendFormat[7] = (*(uint32_t*)CONFIG_DATA_X_MIDDLEPOINT_OFFSET);
-			for(i = 1; i < 8; i++)
-			{
-				rsSendFormat[8] += rsSendFormat[i];
-			}
-			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
+KEY ID:	 A5
+FUNCNUM: 81
+VALUE: REMOTE = 00 CALIBRATION= 01 
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+COMMAND_XCALIB_READ 
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|  KEY ID | FUNCNUM |    X    |    X    |    X    |    X    |    X    |    X    |    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   82    |   00    |   00    |   00    |    00   |   00    |   00    |   00    |   7E    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
 
-		break;
+KEY ID:	  A5	
+FUNCNUM:  82
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
 
-		case COMMAND_YCALIB_READ:
-			rsSendFormat[0] = COMMAND_HEADER;
-			rsSendFormat[1] = COMMAND_YCALIB_READ;
-			rsSendFormat[2] = (*(uint32_t*)(CONFIG_DATA_Y_MAXPOINT_OFFSET + 1));
-			rsSendFormat[3] = (*(uint32_t*)CONFIG_DATA_Y_MAXPOINT_OFFSET);
-			rsSendFormat[4] = (*(uint32_t*)(CONFIG_DATA_Y_MINPOINT_OFFSET + 1));
-			rsSendFormat[5] = (*(uint32_t*)CONFIG_DATA_Y_MINPOINT_OFFSET);
-			rsSendFormat[6] = (*(uint32_t*)(CONFIG_DATA_Y_MIDDLEPOINT_OFFSET + 1));
-			rsSendFormat[7] = (*(uint32_t*)CONFIG_DATA_Y_MIDDLEPOINT_OFFSET);
-			for(i = 1; i < 8; i++)
-			{
-				rsSendFormat[8] += rsSendFormat[i];
-			}
-			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
+RESPONSE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|  KEY ID | FUNCNUM | xMAX MSB| xMAX LSB| xMIN MSB| xMIN LSB| xMID MSB| xMID LSB|    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   82    |   12    |   34    |   34    |    56   |   56    |   78    |   00    |   E0    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
 
-		break;
-			//default***********************
+KEY ID:	 A5
+FUNCNUM: 82
+xMAX MSB: 16 BIT Y EKSENİ MAXIMUM VERİSİNİN EN ANLAMLI BİTİ 
+xMAX LSB: 16 BIT Y EKSENİ MAXIMUM VERİSİNİN EN ANLAMSIZ BİTİ 
+xMIN MSB: 16 BIT Y EKSENİ MINIMUM VERİSİNİN EN ANLAMLI BİTİ 
+xMIN LSB: 16 BIT Y EKSENİ MINIMUM VERİSİNİN EN ANLAMSIZ BİTİ 
+xMID MSB: 16 BIT Y EKSENİ MIDDLE VERİSİNİN EN ANLAMLI BİTİ 
+xMID LSB: 16 BIT Y EKSENİ MIDDLE VERİSİNİN EN ANLAMSIZ BİTİ 
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+COMMAND_YCALIB_READ 
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|  KEY ID | FUNCNUM |    X    |    X    |    X    |    X    |    X    |    X    |    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   83    |   00    |   00    |   00    |    00   |   00    |   00    |   00    |   7D    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+
+KEY ID:	  A5	
+FUNCNUM:  83
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+
+
+RESPONSE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|  KEY ID | FUNCNUM | yMAX MSB| yMAX LSB| yMIN MSB| yMIN LSB| yMID MSB| yMID LSB|    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   83    |   12    |   34    |   34    |    56   |   56    |   78    |   00    |   DF    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+
+KEY ID:	 A5
+FUNCNUM: 83
+yMAX MSB: 16 BIT Y EKSENİ MAXIMUM VERİSİNİN EN ANLAMLI BİTİ 
+yMAX LSB: 16 BIT Y EKSENİ MAXIMUM VERİSİNİN EN ANLAMSIZ BİTİ 
+yMIN MSB: 16 BIT Y EKSENİ MINIMUM VERİSİNİN EN ANLAMLI BİTİ 
+yMIN LSB: 16 BIT Y EKSENİ MINIMUM VERİSİNİN EN ANLAMSIZ BİTİ 
+yMID MSB: 16 BIT Y EKSENİ MIDDLE VERİSİNİN EN ANLAMLI BİTİ 
+yMID LSB: 16 BIT Y EKSENİ MIDDLE VERİSİNİN EN ANLAMSIZ BİTİ 
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+COMMAND_DEFAULT_MODSEL_READ 
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|  KEY ID | FUNCNUM |    X    |    X    |    X    |    X    |    X    |    X    |    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   71    |   00    |   00    |   00    |    00   |   00    |   00    |   00    |   8F    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+
+KEY ID				: A5	
+FUNCNUM				: 71
+CHECKNUM			: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+
+RESPONSE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+| HEADER  | FUNCNUM |  VALUE  |    X    |    X    |    X    |    X    |    X    |    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   71    |   00    |   00    |   00    |    00   |   00    |   00    |   00    |   8F    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+
+KEY ID				: A5
+FUNCNUM				: 71
+VALUE				: TKK_MOD_RS422 = 0	TKK_MOD_USB = 1	   TKK_MOD_CAN = 2  "RS422 DIŞINDAKİ MODLAR KODLANACAK"
+CHECKNUM			: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+
+
+
+
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+COMMAND_XCALIB_READ 
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|  KEY ID | FUNCNUM |    X    |    X    |    X    |    X    |    X    |    X    |    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   82    |   00    |   00    |   00    |    00   |   00    |   00    |   00    |   7E    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+
+KEY ID:	  A5	
+FUNCNUM:  82
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+
+RESPONSE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|  KEY ID | FUNCNUM | xMAX MSB| xMAX LSB| xMIN MSB| xMIN LSB| xMID MSB| xMID LSB|    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   82    |   12    |   34    |   34    |    56   |   56    |   78    |   00    |   E0    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+
+KEY ID:	 A5
+FUNCNUM: 82
+xMAX MSB: 16 BIT Y EKSENİ MAXIMUM VERİSİNİN EN ANLAMLI BİTİ 
+xMAX LSB: 16 BIT Y EKSENİ MAXIMUM VERİSİNİN EN ANLAMSIZ BİTİ 
+xMIN MSB: 16 BIT Y EKSENİ MINIMUM VERİSİNİN EN ANLAMLI BİTİ 
+xMIN LSB: 16 BIT Y EKSENİ MINIMUM VERİSİNİN EN ANLAMSIZ BİTİ 
+xMID MSB: 16 BIT Y EKSENİ MIDDLE VERİSİNİN EN ANLAMLI BİTİ 
+xMID LSB: 16 BIT Y EKSENİ MIDDLE VERİSİNİN EN ANLAMSIZ BİTİ 
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+COMMAND_YCALIB_READ 
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|  KEY ID | FUNCNUM |    X    |    X    |    X    |    X    |    X    |    X    |    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   83    |   00    |   00    |   00    |    00   |   00    |   00    |   00    |   7D    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+
+KEY ID:	  A5	
+FUNCNUM:  83
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+
+
+RESPONSE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    0    |    1    |    2    |    3    |    4    |    5    |    6    |    7    |    8    |    9    |  BYTE NUMBER  
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|  KEY ID | FUNCNUM | yMAX MSB| yMAX LSB| yMIN MSB| yMIN LSB| yMID MSB| yMID LSB|    X    |CHECKNUM |  DESCRIPTION
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+|    A5   |   83    |   12    |   34    |   34    |    56   |   56    |   78    |   00    |   DF    |  EXAMPLE
++---------+---------+---------+---------+---------+---------+---------+---------+---------+---------+
+
+KEY ID:	 A5
+FUNCNUM: 83
+yMAX MSB: 16 BIT Y EKSENİ MAXIMUM VERİSİNİN EN ANLAMLI BİTİ 
+yMAX LSB: 16 BIT Y EKSENİ MAXIMUM VERİSİNİN EN ANLAMSIZ BİTİ 
+yMIN MSB: 16 BIT Y EKSENİ MINIMUM VERİSİNİN EN ANLAMLI BİTİ 
+yMIN LSB: 16 BIT Y EKSENİ MINIMUM VERİSİNİN EN ANLAMSIZ BİTİ 
+yMID MSB: 16 BIT Y EKSENİ MIDDLE VERİSİNİN EN ANLAMLI BİTİ 
+yMID LSB: 16 BIT Y EKSENİ MIDDLE VERİSİNİN EN ANLAMSIZ BİTİ 
+CHECKNUM: BYTE1-BYTE8 TOPLAMINDAN OLUŞAN "CHECKSUM8 2s COMPLEMENT" METODUYLA HESAPLANAN DEĞERDİR. 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			case COMMAND_DEFAULT_MODSEL_READ:
 			rsSendFormat[0] = COMMAND_HEADER;
 			rsSendFormat[1] = COMMAND_DEFAULT_MODSEL_READ;

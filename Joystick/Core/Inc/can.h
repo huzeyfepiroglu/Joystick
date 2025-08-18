@@ -41,7 +41,10 @@ extern CAN_HandleTypeDef hcan;
 void MX_CAN_Init(void);
 
 /* USER CODE BEGIN Prototypes */
-
+//void CAN_Filter_All_To_FIFO0(void);
+void CAN_ConfigFilter(void);
+void CAN_StartIT(void);
+void CAN_SendExample(void);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

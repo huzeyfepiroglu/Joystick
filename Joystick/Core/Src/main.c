@@ -38,7 +38,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define ASELSAN		 0
+#define ASELSANKONYA 1
 
+#define XAXIS	1
+#define YAXIS	0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -97,8 +101,22 @@ uint8_t rsSendFormat[9];
 uint8_t rs422CheckSum = 0;
 bool sendUartFlag = false;
 
+//can
+/* Alınan son mesajı tutmak için basit buffer (debug amaçlı) */
+typedef struct {
+  uint32_t StdId;
+  uint8_t  DLC;
+  uint8_t  Data[8];
+} CAN_LastRx_t;
+
+CAN_LastRx_t g_lastRx;
+
+//volatile uint8_t can_rx_flag = 0;
+//CAN_RxHeaderTypeDef rxh;
+//uint8_t rxdata[8];
 //receive
 void sendAckUart(void);					//OK
+void sendAckCan(void);
 void checkCommand(uint8_t* rxBuffer); 	//OK
 //UART variables
 uint8_t tempRxDataIn;
@@ -135,6 +153,7 @@ void calculateAxisData(joystickBorder* tempJoystickBorder, uint32_t* tempAnADC_V
 //calibration and and remote mood selection// 0 : remote_mode, 1: calibration mode
 uint8_t remoteMode = 1;
 
+bool tutamakVersion = ASELSANKONYA;
 /* Private variables ---------------------------------------------------------*/
 /*
 ADC_HandleTypeDef hadc1;
@@ -221,10 +240,18 @@ int main(void)
 	checkBootloader();
 
 /*Baslangic için default config data atamasi*/
-//writeDefaultConfigPage();
+	writeDefaultConfigPage();
 	HAL_TIM_Base_Start_IT(&htim2);
 	HAL_TIM_Base_Start_IT(&htim3);
 	HAL_UART_Receive_DMA(&huart1, &rxDataIn, 1);
+
+	CAN_ConfigFilter();       // Tüm ID'leri kabul et (mask filtre)
+	CAN_StartIT();            // CAN'i başlat + RX interrupt aç
+
+//	 CAN_Filter_All_To_FIFO0();                         // her şeyi kabul et
+//	  HAL_CAN_Start(&hcan);                              // CAN’ı başlat
+//	  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING); // FIFO0 RX kesmesi
+
 
 	//fingerAnalogread start
 	HAL_ADCEx_Calibration_Start(&hadc1);
@@ -232,6 +259,8 @@ int main(void)
 	HAL_SDADC_PollForCalibEvent(&hsdadc1, 1000);
 	configurationSettings();
 	initDigitalInputs(getDigitalInputs());
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -241,7 +270,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+//	    if (can_rx_flag)
+//	    {
+//	      can_rx_flag = 0;
+//	      //HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);    // bir şey alındı -> LED değiştir
+//	      // rxh.StdId, rxh.DLC, rxdata[] burada kullanılabilir
+//	    }
 	  mainLoop();
+//	  CAN_SendExample();
+//	  HAL_Delay(1000);
 
   }
   /* USER CODE END 3 */
@@ -277,7 +314,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV2;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
@@ -303,6 +340,7 @@ void configurationSettings(void)
 {
 	//check for DEFAULT/USER Configuration
 	flashReadValue = (*(uint32_t*)CONFIG_DATA_DEFAULT_SELECT);
+	flashReadValue = 0xff;
 	if(flashReadValue == 0xFF)
 	{
 		loadDefaultValues(&userTkkConfig);
@@ -321,10 +359,11 @@ void mainLoop(void)
 
 			//averageAnalogInputs(&AnADC_Values[0], &AnADC_Read[0], ANALOG_COUNT, AVERAGE_WINDOW);
 			averageAnalogInputs(AnADC_Values, AnADC_Read, ANALOG_COUNT, AVERAGE_WINDOW);
-			calculateAxisData(&tkkJoystickBorder, &AnADC_Values[0], &fittedAnAdc_Values[0], 1);
-			calculateAxisData(&tkkJoystickBorder, &AnADC_Values[1], &fittedAnAdc_Values[1], 0);
+			calculateAxisData(&tkkJoystickBorder, &AnADC_Values[0], &fittedAnAdc_Values[0], XAXIS);
+			calculateAxisData(&tkkJoystickBorder, &AnADC_Values[1], &fittedAnAdc_Values[1], YAXIS);
 			sampleAnalogInputs = false;
 		}
+
 		sampleDigitalInputs(getDigitalInputs());
 		SDADC_ScanConversion();
 }
@@ -358,11 +397,13 @@ void bootloaderCommand(void)
 	EraseInitStruct_BOOT.NbPages     = 1;
 	if (HAL_FLASHEx_Erase(&EraseInitStruct_BOOT, &PAGEError) != HAL_OK)
 	{
+
 	}
 
 	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_BOOTMODE_INIT_OFFSET, 0x00CD);
 	HAL_FLASH_Lock();
 	bootValue = *(uint32_t*)CONFIG_BOOTMODE_INIT_OFFSET;
+
 	if(bootValue == 0x00CD)
 	{
 		sendAckUart();
@@ -391,35 +432,49 @@ void calculateAxisData(joystickBorder* tempJoystickBorder, uint32_t* tempAnADC_V
 	errX = GPIO_PIN_RESET;
 	errY = GPIO_PIN_RESET;
 	//calculate x-Axis
-	if(axisData == 1)
+	if(axisData == XAXIS)
 	{
 		if(*tempAnADC_Value <= joystickBorderPtr->xLeftLow)
 		{
 			//*fittedAnAdc_Values = -32766;
-			*fittedAnAdc_Values = -2048;
+			//*fittedAnAdc_Values = -2048;  #huzeyfe
+			*fittedAnAdc_Values = 0;
 			errX = GPIO_PIN_SET;
 		}
 		else if(*tempAnADC_Value >= joystickBorderPtr->xRightHigh)
 		{
 			//*fittedAnAdc_Values = 32766;
 			errX = GPIO_PIN_SET;
-			*fittedAnAdc_Values = 2047;
+			//*fittedAnAdc_Values = 2047;  #huzeyfe
+			*fittedAnAdc_Values = 65535;
 		}
 
 		else if(*tempAnADC_Value >= joystickBorderPtr -> xRightLow)
 		{
-			*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->xRightLow))) * 2047) / (joystickBorderPtr -> xRightRange);
-			if(*fittedAnAdc_Values >= 2047)
+//			*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->xRightLow))) * 2047) / (joystickBorderPtr -> xRightRange); #huzeyfe
+//			if(*fittedAnAdc_Values >= 2047)
+//			{
+//				*fittedAnAdc_Values = 2047;
+//			}
+
+			*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->xRightLow))) * 65535) / (joystickBorderPtr -> xRightRange);
+			if(*fittedAnAdc_Values >= 65535)
 			{
-				*fittedAnAdc_Values = 2047;
+				*fittedAnAdc_Values = 65535;
 			}
 		}
 		else if(*tempAnADC_Value < (joystickBorderPtr -> xLeftHigh))
 		{
-			*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->xLeftHigh) - (int)(*tempAnADC_Value))) * (int)2047) / (joystickBorderPtr -> xLeftRange));
-			if(*fittedAnAdc_Values <= -2048)
+//			*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->xLeftHigh) - (int)(*tempAnADC_Value))) * (int)2047) / (joystickBorderPtr -> xLeftRange)); #huzeyfe
+//			if(*fittedAnAdc_Values <= -2048)
+//			{
+//				*fittedAnAdc_Values = -2048;
+//			}
+
+			*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->xLeftHigh) - (int)(*tempAnADC_Value))) * (int)65535) / (joystickBorderPtr -> xLeftRange));
+			if(*fittedAnAdc_Values <= 0)
 			{
-				*fittedAnAdc_Values = -2048;
+				*fittedAnAdc_Values = 0;
 			}
 		}
 	}
@@ -430,30 +485,44 @@ void calculateAxisData(joystickBorder* tempJoystickBorder, uint32_t* tempAnADC_V
 		{
 			//*fittedAnAdc_Values = 2048;
 			errY = GPIO_PIN_SET;
-			*fittedAnAdc_Values = -2048;
+			//*fittedAnAdc_Values = -2048;  #huzeyfe
+			*fittedAnAdc_Values = 0;
 		}
 		else if(*tempAnADC_Value >= joystickBorderPtr->yUpHigh)
 		{
 			//*fittedAnAdc_Values = -2048;
-			*fittedAnAdc_Values = 2047;
+			//*fittedAnAdc_Values = 2047;
+			*fittedAnAdc_Values = 65535;
 			errY = GPIO_PIN_SET;
 		}
 		else if(*tempAnADC_Value >= joystickBorderPtr -> yUpLow)
 		{
-			*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->yUpLow))) * 2047) / (joystickBorderPtr -> yUpRange);
+//			*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->yUpLow))) * 2047) / (joystickBorderPtr -> yUpRange); #huzeyfe
+//			if(*fittedAnAdc_Values >= 2047)
+//			{
+//				*fittedAnAdc_Values = 2047;
+//			}
 
-			if(*fittedAnAdc_Values >= 2047)
+			*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->yUpLow))) * 65535) / (joystickBorderPtr -> yUpRange);
+			if(*fittedAnAdc_Values >= 65535)
 			{
-				*fittedAnAdc_Values = 2047;
+				*fittedAnAdc_Values = 65535;
 			}
 		}
 		else if(*tempAnADC_Value < (joystickBorderPtr -> yDownHigh))
 		{
-			*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->yDownHigh) - (int)(*tempAnADC_Value))) * (int)2047) / (joystickBorderPtr -> yDownRange));
+//			*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->yDownHigh) - (int)(*tempAnADC_Value))) * (int)2047) / (joystickBorderPtr -> yDownRange)); #huzeyfe
+//
+//			if(*fittedAnAdc_Values <= -2048)
+//			{
+//				*fittedAnAdc_Values = -2048;
+//			}
 
-			if(*fittedAnAdc_Values <= -2048)
+			*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->yDownHigh) - (int)(*tempAnADC_Value))) * (int)65535) / (joystickBorderPtr -> yDownRange));
+
+			if(*fittedAnAdc_Values <= 0)
 			{
-				*fittedAnAdc_Values = -2048;
+				*fittedAnAdc_Values = 0;
 			}
 		}
 
@@ -504,7 +573,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 */
 void averageAnalogInputs(uint32_t* ADC_BUFFERPtr, uint32_t* ADC_READPtr, uint32_t COUNT, uint32_t AVERAGE_WINDOW)
 {
-
 	uint32_t i = 0;
 	uint32_t* tempADC_BUFFERPtr = ADC_BUFFERPtr;
 	uint32_t* tempADC_READPtr = ADC_READPtr;
@@ -514,7 +582,7 @@ void averageAnalogInputs(uint32_t* ADC_BUFFERPtr, uint32_t* ADC_READPtr, uint32_
 		*tempADC_BUFFERPtr = ((*tempADC_BUFFERPtr)*(AVERAGE_WINDOW - 1) + (*tempADC_READPtr))/AVERAGE_WINDOW;
 		tempADC_BUFFERPtr++;
 		tempADC_READPtr++;
-		}
+	}
 }
 
 /** @brief 				: function to get AN_ADCx analog input values
@@ -576,27 +644,26 @@ void initDigitalInputs(digitalInput *digitalInputPtr)
 	/****************************************************
 	***	CUSTOM VALUES SHOULD BE INITIALIZED MANUALLY	***
 	****************************************************/
-	tutamakDigitalInputs[0].inputPin 		= BTN_01_Pin;
-	tutamakDigitalInputs[0].inputPort		= BTN_01_GPIO_Port;
-
-	tutamakDigitalInputs[1].inputPin 		= BTN_02_Pin;
-	tutamakDigitalInputs[1].inputPort		= BTN_02_GPIO_Port;
-	tutamakDigitalInputs[2].inputPin 		= BTN_03_Pin;
-	tutamakDigitalInputs[2].inputPort		= BTN_03_GPIO_Port;
-	tutamakDigitalInputs[3].inputPin 		= BTN_04_Pin;
-	tutamakDigitalInputs[3].inputPort		= BTN_04_GPIO_Port;
-	tutamakDigitalInputs[4].inputPin 		= BTN_05_Pin;
-	tutamakDigitalInputs[4].inputPort		= BTN_05_GPIO_Port;
-	tutamakDigitalInputs[5].inputPin 		= BTN_06_Pin;
-	tutamakDigitalInputs[5].inputPort		= BTN_06_GPIO_Port;
-	tutamakDigitalInputs[6].inputPin 		= BTN_07_Pin;
-	tutamakDigitalInputs[6].inputPort		= BTN_07_GPIO_Port;
-	tutamakDigitalInputs[7].inputPin 		= BTN_08_Pin;
-	tutamakDigitalInputs[7].inputPort		= BTN_08_GPIO_Port;
-	tutamakDigitalInputs[8].inputPin 		= BTN_09_Pin;
-	tutamakDigitalInputs[8].inputPort		= BTN_09_GPIO_Port;
-	tutamakDigitalInputs[9].inputPin 		= BTN_10_Pin;
-	tutamakDigitalInputs[9].inputPort		= BTN_10_GPIO_Port;
+	tutamakDigitalInputs[0].inputPin 	= BTN_01_Pin;
+	tutamakDigitalInputs[0].inputPort	= BTN_01_GPIO_Port;
+	tutamakDigitalInputs[1].inputPin 	= BTN_02_Pin;
+	tutamakDigitalInputs[1].inputPort	= BTN_02_GPIO_Port;
+	tutamakDigitalInputs[2].inputPin 	= BTN_03_Pin;
+	tutamakDigitalInputs[2].inputPort	= BTN_03_GPIO_Port;
+	tutamakDigitalInputs[3].inputPin 	= BTN_04_Pin;
+	tutamakDigitalInputs[3].inputPort	= BTN_04_GPIO_Port;
+	tutamakDigitalInputs[4].inputPin 	= BTN_05_Pin;
+	tutamakDigitalInputs[4].inputPort	= BTN_05_GPIO_Port;
+	tutamakDigitalInputs[5].inputPin 	= BTN_06_Pin;
+	tutamakDigitalInputs[5].inputPort	= BTN_06_GPIO_Port;
+	tutamakDigitalInputs[6].inputPin 	= BTN_07_Pin;
+	tutamakDigitalInputs[6].inputPort	= BTN_07_GPIO_Port;
+	tutamakDigitalInputs[7].inputPin 	= BTN_08_Pin;
+	tutamakDigitalInputs[7].inputPort	= BTN_08_GPIO_Port;
+	tutamakDigitalInputs[8].inputPin 	= BTN_09_Pin;
+	tutamakDigitalInputs[8].inputPort	= BTN_09_GPIO_Port;
+	tutamakDigitalInputs[9].inputPin 	= BTN_10_Pin;
+	tutamakDigitalInputs[9].inputPort	= BTN_10_GPIO_Port;
 	tutamakDigitalInputs[10].inputPin 	= BTN_11_Pin;
 	tutamakDigitalInputs[10].inputPort	= BTN_11_GPIO_Port;
 	tutamakDigitalInputs[11].inputPin 	= BTN_12_Pin;
@@ -643,19 +710,19 @@ void initDigitalInputs(digitalInput *digitalInputPtr)
 	tutamakDigitalInputs[31].inputPort	= BTN_32_GPIO_Port;
 	/***************************************************/
 
-		uint32_t i;
-		digitalInput* tempDigitalInputPtr = digitalInputPtr;
+	uint32_t i;
+	digitalInput* tempDigitalInputPtr = digitalInputPtr;
 
-		for(i = 0; i < BUTTON_COUNT; i++)
-		{
-			tempDigitalInputPtr	->	inputVal = GPIO_PIN_RESET;
-			tempDigitalInputPtr	->	readFlag = false;
-			tempDigitalInputPtr ->  readState= GPIO_PIN_RESET;
-			tempDigitalInputPtr ->  debounceTimer = 0;
-			//for prototype debounce factor
-			tempDigitalInputPtr ->  debounceFactor = 20; /*!!!!!!!!!!!!! config structtan cekilecek !!!!!!!!!!!!!!!!!*/
-			tempDigitalInputPtr++;
-		}
+	for(i = 0; i < BUTTON_COUNT; i++)
+	{
+		tempDigitalInputPtr	->	inputVal = GPIO_PIN_RESET;
+		tempDigitalInputPtr	->	readFlag = false;
+		tempDigitalInputPtr ->  readState= GPIO_PIN_RESET;
+		tempDigitalInputPtr ->  debounceTimer = 0;
+		//for prototype debounce factor
+		tempDigitalInputPtr ->  debounceFactor = 20; /*!!!!!!!!!!!!! config structtan cekilecek !!!!!!!!!!!!!!!!!*/
+		tempDigitalInputPtr++;
+	}
 
 }
 
@@ -756,97 +823,180 @@ digitalInput* getDigitalInputs(void)
 */
 void sendUartFrame(UART_HandleTypeDef *huart,uint8_t* rs422Frame_, uint16_t Size, uint32_t Timeout, bool* sendFlag)
 {
-
 	unsigned int i;
-	if(*sendFlag == true)
+	if(*sendFlag == true && tutamakVersion == ASELSAN)
 	{
-			rs422Frame_[0] = RS422_HEADER;
+		rs422Frame_[0] = RS422_HEADER;
 
 
-			rs422Frame_[1] = 0x00 |
-                       	   ( tutamakDigitalInputs[14].readState << 2) 	|									//SW4-DOWN
-						   ( tutamakDigitalInputs[12].readState << 3) 	|									//SW4-UP
-						   (((~(tutamakDigitalInputs[0].readState)) << 4) & 0x10);							//SW1
+		rs422Frame_[1] = 0x00 |
+					   ( tutamakDigitalInputs[14].readState << 2) 	|									//SW4-DOWN
+					   ( tutamakDigitalInputs[12].readState << 3) 	|									//SW4-UP
+					   (((~(tutamakDigitalInputs[0].readState)) << 4) & 0x10);							//SW1
 
-			rs422Frame_[2] = 0x00 |
-							(((~(tutamakDigitalInputs[11].readState)) << 0) & 0x01)	| 						//SW7
-								(tutamakDigitalInputs[9].readState << 2) 			|						//SW6
-								(tutamakDigitalInputs[2].readState << 4);									//SW2
+		rs422Frame_[2] = 0x00 |
+						(((~(tutamakDigitalInputs[11].readState)) << 0) & 0x01)	| 						//SW7
+							(tutamakDigitalInputs[9].readState << 2) 			|						//SW6
+							(tutamakDigitalInputs[2].readState << 4);									//SW2
 
-			rs422Frame_[3] = (tutamakDigitalInputs[7].readState) 		|									//SW5-RIGHT
-		                   	 (tutamakDigitalInputs[5].readState << 1) 	|									//SW5-LEFT
-							 (tutamakDigitalInputs[3].readState << 2) 	|									//SW5-DOWN
-							 (tutamakDigitalInputs[1].readState << 3) 	|									//SW5-UP
-							 (tutamakDigitalInputs[10].readState << 4)	|									//SW3-RIGHT
-							 (tutamakDigitalInputs[8].readState << 5)	|									//SW3-LEFT
-							 (tutamakDigitalInputs[6].readState << 6)	|									//SW3-DOWN
-							 (tutamakDigitalInputs[4].readState << 7);										//SW3-UP
+		rs422Frame_[3] = (tutamakDigitalInputs[7].readState) 		|									//SW5-RIGHT
+						 (tutamakDigitalInputs[5].readState << 1) 	|									//SW5-LEFT
+						 (tutamakDigitalInputs[3].readState << 2) 	|									//SW5-DOWN
+						 (tutamakDigitalInputs[1].readState << 3) 	|									//SW5-UP
+						 (tutamakDigitalInputs[10].readState << 4)	|									//SW3-RIGHT
+						 (tutamakDigitalInputs[8].readState << 5)	|									//SW3-LEFT
+						 (tutamakDigitalInputs[6].readState << 6)	|									//SW3-DOWN
+						 (tutamakDigitalInputs[4].readState << 7);										//SW3-UP
 
-			if(remoteMode == 0)
-			{
-				//AnADC_Values[0]=( AnADC_Values[0] >> 3) & 0x1FFF;
-				//AnADC_Values[1]=( AnADC_Values[1] >> 3) & 0x1FFF;
+		if(remoteMode == 0)
+		{
+			//AnADC_Values[0]=( AnADC_Values[0] >> 3) & 0x1FFF;
+			//AnADC_Values[1]=( AnADC_Values[1] >> 3) & 0x1FFF;
 
-				rs422Frame_[4] = (AnADC_Values[0] >> 8) & 0xFF;// & 0x1F;			//AN2_7-0
-				rs422Frame_[5] =  AnADC_Values[0]       & 0xFF; 					//AN2_15-8
+			rs422Frame_[4] = (AnADC_Values[0] >> 8) & 0xFF;// & 0x1F;			//AN2_7-0
+			rs422Frame_[5] =  AnADC_Values[0]       & 0xFF; 					//AN2_15-8
 
-				rs422Frame_[6] = (AnADC_Values[1] >> 8) & 0xFF;      				//AN3_7-0
-				rs422Frame_[7] =  AnADC_Values[1]       & 0xFF; 					//AN3_15-8
-			}
-			else
-			{
-				//fitted kullaniliyor
+			rs422Frame_[6] = (AnADC_Values[1] >> 8) & 0xFF;      				//AN3_7-0
+			rs422Frame_[7] =  AnADC_Values[1]       & 0xFF; 					//AN3_15-8
+		}
+		else
+		{
+			//fitted kullaniliyor
 
-				//xAxisData = (AnADC_Values[0] >> 3) & 0x1FFF;
-				//yAxisData = (AnADC_Values[1] >> 3) & 0x1FFF;
+			//xAxisData = (AnADC_Values[0] >> 3) & 0x1FFF;
+			//yAxisData = (AnADC_Values[1] >> 3) & 0x1FFF;
 
-				rs422Frame_[4] = (fittedAnAdc_Values[0] >> 7) & 0x1F;
-				rs422Frame_[5] =  fittedAnAdc_Values[0]       & 0x7F;
+			rs422Frame_[4] = (fittedAnAdc_Values[0] >> 7) & 0x1F;
+			rs422Frame_[5] =  fittedAnAdc_Values[0]       & 0x7F;
 
-				rs422Frame_[6] = (fittedAnAdc_Values[1] >> 7) & 0x1F;
-				rs422Frame_[7] =  fittedAnAdc_Values[1]       & 0x7F;
-			}
+			rs422Frame_[6] = (fittedAnAdc_Values[1] >> 7) & 0x1F;
+			rs422Frame_[7] =  fittedAnAdc_Values[1]       & 0x7F;
+		}
 
-			rs422Frame_[8] = 0x00;
-			//rs422Frame_[8] = 0x00 |
-			//								errY << 7 |
-			//								errX << 6;//error byte
+		rs422Frame_[8] = 0x00;
+		//rs422Frame_[8] = 0x00 |
+		//								errY << 7 |
+		//								errX << 6;//error byte
 
+		/* checksum calculation */
+		rs422Frame_[RS422_FRAME_SIZE-1] = 0;
+		for(i=1;i<RS422_FRAME_SIZE-1;i++)
+		{
+			rs422Frame_[RS422_FRAME_SIZE-1] += rs422Frame_[i];
+		}
+		rs422Frame_[RS422_FRAME_SIZE-1] = (255-rs422Frame_[RS422_FRAME_SIZE-1]) + 1;
+		rs422Frame_[RS422_FRAME_SIZE -1] = rs422Frame[RS422_FRAME_SIZE - 1] & 0x7F;
 
+		/* transmit frame */
+		  HAL_UART_Transmit(huart, (uint8_t*)rs422Frame_, 10, Timeout);
+		*sendFlag = false;
+	}
+	else if(*sendFlag == true && tutamakVersion == ASELSANKONYA)
+	{
 
-			/* checksum calculation */
-			rs422Frame_[RS422_FRAME_SIZE-1] = 0;
-			for(i=1;i<RS422_FRAME_SIZE-1;i++)
-			{
-				rs422Frame_[RS422_FRAME_SIZE-1] += rs422Frame_[i];
-			}
-			rs422Frame_[RS422_FRAME_SIZE-1] = (255-rs422Frame_[RS422_FRAME_SIZE-1]) + 1;
-			rs422Frame_[RS422_FRAME_SIZE -1] = rs422Frame[RS422_FRAME_SIZE - 1] & 0x7F;
-			/* transmit frame */
-			HAL_UART_Transmit(huart, (uint8_t*)rs422Frame_, 10, Timeout);
-			*sendFlag = false;
+		rs422Frame_[0] = (((!tutamakDigitalInputs[0].readState))		|
+						 (   tutamakDigitalInputs[1].readState 	<< 1)	|
+						 (   tutamakDigitalInputs[2].readState 	<< 2) 	|
+						 (   tutamakDigitalInputs[3].readState 	<< 3) 	|
+						 (   tutamakDigitalInputs[4].readState  << 4) 	|
+						 (   tutamakDigitalInputs[5].readState 	<< 5) 	|
+						 (   tutamakDigitalInputs[6].readState 	<< 6) 	|
+						 (   tutamakDigitalInputs[7].readState) << 7);
+
+		rs422Frame_[1] = (((tutamakDigitalInputs[8].readState)			|
+						 (  tutamakDigitalInputs[9].readState 	<< 1)	|
+						 (  tutamakDigitalInputs[10].readState 	<< 2) 	|
+						 ((!tutamakDigitalInputs[11].readState) << 3) 	|
+						 (  tutamakDigitalInputs[12].readState  << 4) 	|
+						 (  tutamakDigitalInputs[13].readState 	<< 5) 	|
+						 (  tutamakDigitalInputs[14].readState 	<< 6) 	|
+						 (  tutamakDigitalInputs[15].readState) << 7));
+
+		rs422Frame_[2] =((( tutamakDigitalInputs[16].readState)			|
+						(   tutamakDigitalInputs[17].readState 	<< 1)	|
+						(   tutamakDigitalInputs[18].readState 	<< 2) 	|
+						(   tutamakDigitalInputs[19].readState 	<< 3) 	|
+						(   tutamakDigitalInputs[20].readState  << 4) 	|
+						(   tutamakDigitalInputs[21].readState 	<< 5) 	|
+						(   tutamakDigitalInputs[22].readState 	<< 6) 	|
+						(   tutamakDigitalInputs[23].readState) << 7));
+
+		rs422Frame_[3] =((( tutamakDigitalInputs[24].readState)			|
+						(   tutamakDigitalInputs[25].readState 	<< 1)	|
+						(   tutamakDigitalInputs[26].readState 	<< 2) 	|
+						(   tutamakDigitalInputs[27].readState 	<< 3) 	|
+						(   tutamakDigitalInputs[28].readState  << 4) 	|
+						(   tutamakDigitalInputs[29].readState 	<< 5) 	|
+						(   tutamakDigitalInputs[30].readState 	<< 6) 	|
+						(   tutamakDigitalInputs[31].readState) << 7));
+
+		if(remoteMode == 0)
+		{
+			rs422Frame_[4] = (AnADC_Values[0] >> 8) & 0xFF;// & 0x1F;			//AN2_7-0
+			rs422Frame_[5] =  AnADC_Values[0]       & 0xFF; 					//AN2_15-8
+
+			rs422Frame_[6] = (AnADC_Values[1] >> 8) & 0xFF;      				//AN3_7-0
+			rs422Frame_[7] =  AnADC_Values[1]       & 0xFF; 					//AN3_15-8
+		}
+		else
+		{
+			rs422Frame_[4] = (fittedAnAdc_Values[0] >> 7) & 0x1F;
+			rs422Frame_[5] =  fittedAnAdc_Values[0]       & 0x7F;
+
+			rs422Frame_[6] = (fittedAnAdc_Values[1] >> 7) & 0x1F;
+			rs422Frame_[7] =  fittedAnAdc_Values[1]       & 0x7F;
+		}
+
+	//CAN
+	CAN_TxHeaderTypeDef txHeader = {0};
+
+	txHeader.StdId = 0x321;
+	txHeader.IDE   = CAN_ID_STD;
+	txHeader.RTR   = CAN_RTR_DATA;
+	txHeader.DLC   = 8;
+	txHeader.TransmitGlobalTime = DISABLE;
+
+	uint8_t data[8] = { rs422Frame_[0],
+	rs422Frame_[1],
+	rs422Frame_[2],
+	rs422Frame_[3],
+	rs422Frame_[4],
+	rs422Frame_[5],
+	rs422Frame_[6],
+	rs422Frame_[7]};
+
+	uint32_t txMailbox;
+
+	if (HAL_CAN_AddTxMessage(&hcan, &txHeader, data, &txMailbox) != HAL_OK)
+	{
+	// TX kuyruğu dolu vs. durumunda hata yönetimi
+	}
+	*sendFlag = false;
 	}
 }
 
 /** @brief 				: function to erase flash page that contains user configurations
-		@Param 				: none
+		@Param 			: none
 		@description	:
-
 */
+
 void eraseFlashUserConf(void)
 {
 	HAL_FLASH_Unlock();
+
 	static FLASH_EraseInitTypeDef EraseInitStruct;
 	EraseInitStruct.TypeErase   = FLASH_TYPEERASE_PAGES;
-  EraseInitStruct.PageAddress = CONFIG_DATA_BASE_ADDR; // düzenlenecek !!!!!!!!!!!!!!!!!!!!*/
-  EraseInitStruct.NbPages     = 1;
+	EraseInitStruct.PageAddress = CONFIG_DATA_BASE_ADDR; // düzenlenecek !!!!!!!!!!!!!!!!!!!!*/
+	EraseInitStruct.NbPages     = 1;
 
-  if (HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK)
-  {
-    while (1)
-    {
-    }
-  }
+	if (HAL_FLASHEx_Erase(&EraseInitStruct, &PAGEError) != HAL_OK)
+	{
+		while (1)
+		{
+
+		}
+	}
+
 	HAL_FLASH_Lock();
 }
 
@@ -864,20 +1014,22 @@ void refreshFlashUserConf(ConfigData *configDataPtr)
 	eraseFlashUserConf();
 	HAL_FLASH_Unlock();
 
-	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_DEFAULT_SELECT, 0x00 );
-	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_INTERFACE_OFFSET, tempConfigDataPtr -> tkkModSelection );
-	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_X_MIDDLEPOINT_OFFSET, tempConfigDataPtr ->xMid);
-	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_X_MINPOINT_OFFSET, tempConfigDataPtr -> xMin);
-	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_X_MAXPOINT_OFFSET, tempConfigDataPtr -> xMax);
-	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_Y_MIDDLEPOINT_OFFSET, tempConfigDataPtr -> yMid);
-	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_Y_MINPOINT_OFFSET, tempConfigDataPtr -> yMin);
-	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_Y_MAXPOINT_OFFSET, tempConfigDataPtr -> yMax);
+	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_DEFAULT_SELECT		, 0x00 									);
+	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_INTERFACE_OFFSET		, tempConfigDataPtr -> tkkModSelection 	);
+	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_X_MIDDLEPOINT_OFFSET	, tempConfigDataPtr -> xMid				);
+	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_X_MINPOINT_OFFSET		, tempConfigDataPtr -> xMin				);
+	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_X_MAXPOINT_OFFSET		, tempConfigDataPtr -> xMax				);
+	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_Y_MIDDLEPOINT_OFFSET	, tempConfigDataPtr -> yMid				);
+	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_Y_MINPOINT_OFFSET		, tempConfigDataPtr -> yMin				);
+	HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_Y_MAXPOINT_OFFSET		, tempConfigDataPtr -> yMax				);
+
 	for(i = 0; i < 32; i++)
 	{
 		HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_DATA_DEBOUNCEFACTOR_BASE + i*CONFIG_FLASH_ADDR_INCREMENT, tempTkkConfig.debounceFactor[i]);
 	}
 
 	HAL_FLASH_Lock();
+
 	readFlashUserConf(&userTkkConfig);
 }
 
@@ -891,59 +1043,85 @@ void readFlashUserConf(ConfigData *configDataPtr)
 	volatile uint32_t i = 0;
 	ConfigData* tempConfigDataPtr = configDataPtr;
 
-	tempConfigDataPtr -> tkkModSelection = (*(uint32_t*)CONFIG_DATA_INTERFACE_OFFSET);
+	tempConfigDataPtr -> tkkModSelection 	= (*(uint32_t*)CONFIG_DATA_INTERFACE_OFFSET		);
 
-	tempConfigDataPtr -> xMid = (*(uint32_t*)CONFIG_DATA_X_MIDDLEPOINT_OFFSET);
-	tempConfigDataPtr -> xMin = (*(uint32_t*)CONFIG_DATA_X_MINPOINT_OFFSET);
-	tempConfigDataPtr -> xMax = (*(uint32_t*)CONFIG_DATA_X_MAXPOINT_OFFSET);
+	tempConfigDataPtr -> xMid 				= (*(uint32_t*)CONFIG_DATA_X_MIDDLEPOINT_OFFSET	);
+	tempConfigDataPtr -> xMin 				= (*(uint32_t*)CONFIG_DATA_X_MINPOINT_OFFSET	);
+	tempConfigDataPtr -> xMax 				= (*(uint32_t*)CONFIG_DATA_X_MAXPOINT_OFFSET	);
 
-	tempConfigDataPtr -> yMid = (*(uint32_t*)CONFIG_DATA_Y_MIDDLEPOINT_OFFSET);
-	tempConfigDataPtr -> yMin = (*(uint32_t*)CONFIG_DATA_Y_MINPOINT_OFFSET);
-	tempConfigDataPtr -> yMax = (*(uint32_t*)CONFIG_DATA_Y_MAXPOINT_OFFSET);
+	tempConfigDataPtr -> yMid 				= (*(uint32_t*)CONFIG_DATA_Y_MIDDLEPOINT_OFFSET	);
+	tempConfigDataPtr -> yMin 				= (*(uint32_t*)CONFIG_DATA_Y_MINPOINT_OFFSET	);
+	tempConfigDataPtr -> yMax 				= (*(uint32_t*)CONFIG_DATA_Y_MAXPOINT_OFFSET	);
 
 	for(i = 0; i < 32; i++)
 	{
 		tempConfigDataPtr -> debounceFactor [i] = (*(uint32_t*)(CONFIG_DATA_DEBOUNCEFACTOR_BASE + i*CONFIG_FLASH_ADDR_INCREMENT));
 	}
-
 }
 void loadDefaultValues(ConfigData *configDataPtr)
 {
 	volatile uint32_t i = 0;
 	ConfigData* tempConfigDataPtr = configDataPtr;
 
-	tempConfigDataPtr -> tkkModSelection = (*(uint32_t*)DEFAULT_CONFIG_DATA_INTERFACE_OFFSET);
+	tempConfigDataPtr -> tkkModSelection 	= (*(uint32_t*)DEFAULT_CONFIG_DATA_INTERFACE_OFFSET		);
 
-	tempConfigDataPtr -> xMid = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MIDDLEPOINT_OFFSET);
-	tempConfigDataPtr -> xMin = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MINPOINT_OFFSET);
-	tempConfigDataPtr -> xMax = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MAXPOINT_OFFSET);
+	tempConfigDataPtr -> xMid 				= (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MIDDLEPOINT_OFFSET	);
+	tempConfigDataPtr -> xMin 				= (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MINPOINT_OFFSET	);
+	tempConfigDataPtr -> xMax 				= (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MAXPOINT_OFFSET	);
 
-	tempConfigDataPtr -> yMid = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MIDDLEPOINT_OFFSET);
-	tempConfigDataPtr -> yMin = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MINPOINT_OFFSET);
-	tempConfigDataPtr -> yMax = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MAXPOINT_OFFSET);
+	tempConfigDataPtr -> yMid 				= (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MIDDLEPOINT_OFFSET	);
+	tempConfigDataPtr -> yMin 				= (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MINPOINT_OFFSET	);
+	tempConfigDataPtr -> yMax 				= (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MAXPOINT_OFFSET	);
 
 	for(i = 0; i < 32; i++)
 	{
 		tempConfigDataPtr ->debounceFactor [i] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_DEBOUNCEFACTOR_BASE + i*CONFIG_FLASH_ADDR_INCREMENT));
 	}
-
-
 }
 
 void sendAckUart(void)
 {
-	volatile uint8_t txBufferACK[9];
+	volatile uint8_t uartACK[9];
 
-	txBufferACK[0] = COMMAND_HEADER;
-	txBufferACK[1] = COMMAND_ACK;
-	txBufferACK[2] = 0x00;
-	txBufferACK[3] = 0x00;
-	txBufferACK[4] = 0x00;
-	txBufferACK[5] = 0x00;
-	txBufferACK[6] = 0x00;
-	txBufferACK[7] = 0x00;
-	txBufferACK[8] = CHECKSUM_ACK;
-	HAL_UART_Transmit(&huart1, (uint8_t*)txBufferACK, 9, 5000);
+	uartACK[0] = COMMAND_HEADER;
+	uartACK[1] = COMMAND_ACK;
+	uartACK[2] = 0x00;
+	uartACK[3] = 0x00;
+	uartACK[4] = 0x00;
+	uartACK[5] = 0x00;
+	uartACK[6] = 0x00;
+	uartACK[7] = 0x00;
+	uartACK[8] = CHECKSUM_ACK;
+	HAL_UART_Transmit(&huart1, (uint8_t*)uartACK, 9, 5000);
+}
+
+void sendAckCan(void)
+{
+	CAN_TxHeaderTypeDef txHeader = {0};
+	uint32_t txMailbox;
+
+	txHeader.StdId = 0x321;
+	txHeader.IDE   = CAN_ID_STD;
+	txHeader.RTR   = CAN_RTR_DATA;
+	txHeader.DLC   = 8;
+	txHeader.TransmitGlobalTime = DISABLE;
+
+	uint8_t canACK[9];
+
+	canACK[0] = COMMAND_HEADER;
+	canACK[1] = COMMAND_ACK;
+	canACK[2] = 0x00;
+	canACK[3] = 0x00;
+	canACK[4] = 0x00;
+	canACK[5] = 0x00;
+	canACK[6] = 0x00;
+	canACK[7] = CHECKSUM_ACK;
+
+	if (HAL_CAN_AddTxMessage(&hcan, &txHeader, canACK, &txMailbox) != HAL_OK)
+	{
+		// TX kuyruğu dolu vs. durumunda hata yönetimi
+	}
+
 }
 
 void checkCommand(uint8_t* rxBuffer)
@@ -953,8 +1131,8 @@ void checkCommand(uint8_t* rxBuffer)
 	switch (rxBuffer[1])
 	{
 		case COMMAND_MODSEL_WRITE:
-		tempTkkConfig.tkkModSelection = rxBuffer[2];
-		sendAckUart();
+			tempTkkConfig.tkkModSelection = rxBuffer[2];
+			sendAckUart();
 		break;
 
 		case COMMAND_XCALIB_WRITE:
@@ -1104,12 +1282,29 @@ void checkCommand(uint8_t* rxBuffer)
 	}
 }
 
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan_arg)
+{
+  CAN_RxHeaderTypeDef rxHeader;
+  uint8_t rxData[8];
+
+  if (HAL_CAN_GetRxMessage(hcan_arg, CAN_RX_FIFO0, &rxHeader, rxData) != HAL_OK)
+  {
+    return;
+  }
+
+  if (rxHeader.IDE == CAN_ID_STD && rxHeader.RTR == CAN_RTR_DATA)
+  {
+	  if(rxHeader.StdId == 0x101)
+	  {
+		    checkCommand(rxData);
+	  }
+  }
+}
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-
 	unsigned int i;
 	tempRxDataIn = rxDataIn;
-
 
 	if(rxBufferDataCounter==0 && rxDataIn==0xA5)
 	{
@@ -1148,29 +1343,31 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	{
 		rxBufferDataCounter = 0;
 	}
-
 }
 
 void writeDefaultConfigPage(void)
 {
 	uint32_t index = 0;
-	//default degerler düzenlenecek
-	defaultTkkConfig.yMin = 12000;
-	defaultTkkConfig.yMax = 15000;
-	defaultTkkConfig.yMid = 19000;
 
-	defaultTkkConfig.xMin = 12000;
-	defaultTkkConfig.xMax = 15000;
-	defaultTkkConfig.xMid = 19000;
+	defaultTkkConfig.tkkModSelection = TKK_MOD_RS422;
+
+	defaultTkkConfig.yMin = 32900;
+	defaultTkkConfig.yMax = 65535;
+	defaultTkkConfig.yMid = 49220;
+
+	defaultTkkConfig.xMin = 32900;
+	defaultTkkConfig.xMax = 65535;
+	defaultTkkConfig.xMid = 49220;
+
 	for(index = 0; index < BUTTON_COUNT; index++)
 	{
 		defaultTkkConfig.debounceFactor[index] = 20;
 	}
 
-	defaultTkkConfig.tkkModSelection = TKK_MOD_RS422;
-
 	volatile uint32_t i = 0;
+
 	HAL_FLASH_Unlock();
+
 	static FLASH_EraseInitTypeDef EraseInitStructDefaultPage;
 	EraseInitStructDefaultPage.TypeErase = FLASH_TYPEERASE_PAGES;
 	EraseInitStructDefaultPage.PageAddress = DEFAULT_CONFIG_DATA_BASE_ADDR;
