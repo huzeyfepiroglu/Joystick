@@ -98,6 +98,7 @@ digitalInput tutamakDigitalInputs[BUTTON_COUNT];			//OK
 void sendUartFrame(UART_HandleTypeDef *huart,uint8_t *uartFrame, uint16_t Size, uint32_t Timeout, bool *sendFlag);		//OK
 uint8_t rs422Frame[10];
 uint8_t rsSendFormat[9];
+uint8_t canSendFormat[8];
 uint8_t rs422CheckSum = 0;
 bool sendUartFlag = false;
 
@@ -406,7 +407,15 @@ void bootloaderCommand(void)
 
 	if(bootValue == 0x00CD)
 	{
-		sendAckUart();
+		if(userTkkConfig.tkkModSelection == TKK_MOD_RS422)
+		{
+			sendAckUart();
+		}
+
+		else if(userTkkConfig.tkkModSelection == TKK_MOD_CAN)
+		{
+			sendAckCan();
+		}
 		HAL_NVIC_SystemReset();
 	}
 }
@@ -824,7 +833,7 @@ digitalInput* getDigitalInputs(void)
 void sendUartFrame(UART_HandleTypeDef *huart,uint8_t* rs422Frame_, uint16_t Size, uint32_t Timeout, bool* sendFlag)
 {
 	unsigned int i;
-	if(*sendFlag == true && tutamakVersion == ASELSAN)
+	if(*sendFlag == true && userTkkConfig.tkkModSelection == TKK_MOD_RS422)
 	{
 		rs422Frame_[0] = RS422_HEADER;
 
@@ -891,7 +900,7 @@ void sendUartFrame(UART_HandleTypeDef *huart,uint8_t* rs422Frame_, uint16_t Size
 		  HAL_UART_Transmit(huart, (uint8_t*)rs422Frame_, 10, Timeout);
 		*sendFlag = false;
 	}
-	else if(*sendFlag == true && tutamakVersion == ASELSANKONYA)
+	else if(*sendFlag == true && userTkkConfig.tkkModSelection == TKK_MOD_CAN)
 	{
 
 		rs422Frame_[0] = (((!tutamakDigitalInputs[0].readState))		|
@@ -1115,171 +1124,346 @@ void sendAckCan(void)
 	canACK[4] = 0x00;
 	canACK[5] = 0x00;
 	canACK[6] = 0x00;
-	canACK[7] = CHECKSUM_ACK;
+	canACK[7] = 0x00;
 
 	if (HAL_CAN_AddTxMessage(&hcan, &txHeader, canACK, &txMailbox) != HAL_OK)
 	{
 		// TX kuyruğu dolu vs. durumunda hata yönetimi
 	}
-
 }
 
 void checkCommand(uint8_t* rxBuffer)
 {
 	volatile uint32_t i = 0;
 
-	switch (rxBuffer[1])
+	if(userTkkConfig.tkkModSelection == TKK_MOD_RS422)
 	{
-		case COMMAND_MODSEL_WRITE:
-			tempTkkConfig.tkkModSelection = rxBuffer[2];
-			sendAckUart();
-		break;
-
-		case COMMAND_XCALIB_WRITE:
-			tempTkkConfig.xMax = rxBuffer[2]<<8 | rxBuffer[3];
-			tempTkkConfig.xMin = rxBuffer[4]<<8 | rxBuffer[5];
-			tempTkkConfig.xMid = rxBuffer[6]<<8 | rxBuffer[7];
-			sendAckUart();
-		break;
-
-		case COMMAND_YCALIB_WRITE:
-			tempTkkConfig.yMax = rxBuffer[2]<<8 | rxBuffer[3];
-			tempTkkConfig.yMin = rxBuffer[4]<<8 | rxBuffer[5];
-			tempTkkConfig.yMid = rxBuffer[6]<<8 | rxBuffer[7];
-			sendAckUart();
-		break;
-
-		case COMMAND_DEBOUNCE_WRITE://debounce tarafi düzenlenecek
-		break;
-
-		case COMMAND_MODSEL_READ:
-			rsSendFormat[0] = COMMAND_HEADER;
-			rsSendFormat[1] = COMMAND_MODSEL_READ;
-			rsSendFormat[2] = (*(uint32_t*)CONFIG_DATA_INTERFACE_OFFSET);;
-			rsSendFormat[3] = 0x00;
-			rsSendFormat[4] = 0x00;
-			rsSendFormat[5] = 0x00;
-			rsSendFormat[6] = 0x00;
-			rsSendFormat[7] = 0x00;
-			for(i = 1; i < 8; i++)
+		switch (rxBuffer[1])
 			{
-				rsSendFormat[8] += rsSendFormat[i];
+				case COMMAND_MODSEL_WRITE:
+					tempTkkConfig.tkkModSelection = rxBuffer[2];
+					sendAckUart();
+				break;
+
+				case COMMAND_XCALIB_WRITE:
+					tempTkkConfig.xMax = rxBuffer[2]<<8 | rxBuffer[3];
+					tempTkkConfig.xMin = rxBuffer[4]<<8 | rxBuffer[5];
+					tempTkkConfig.xMid = rxBuffer[6]<<8 | rxBuffer[7];
+					sendAckUart();
+				break;
+
+				case COMMAND_YCALIB_WRITE:
+					tempTkkConfig.yMax = rxBuffer[2]<<8 | rxBuffer[3];
+					tempTkkConfig.yMin = rxBuffer[4]<<8 | rxBuffer[5];
+					tempTkkConfig.yMid = rxBuffer[6]<<8 | rxBuffer[7];
+					sendAckUart();
+				break;
+
+				case COMMAND_DEBOUNCE_WRITE://debounce tarafi düzenlenecek
+				break;
+
+				case COMMAND_MODSEL_READ:
+					rsSendFormat[0] = COMMAND_HEADER;
+					rsSendFormat[1] = COMMAND_MODSEL_READ;
+					rsSendFormat[2] = (*(uint32_t*)CONFIG_DATA_INTERFACE_OFFSET);;
+					rsSendFormat[3] = 0x00;
+					rsSendFormat[4] = 0x00;
+					rsSendFormat[5] = 0x00;
+					rsSendFormat[6] = 0x00;
+					rsSendFormat[7] = 0x00;
+					for(i = 1; i < 8; i++)
+					{
+						rsSendFormat[8] += rsSendFormat[i];
+					}
+					HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
+				break;
+
+				case COMMAND_XCALIB_READ:
+					rsSendFormat[0] = COMMAND_HEADER;
+					rsSendFormat[1] = COMMAND_XCALIB_READ;
+					rsSendFormat[2] = (*(uint32_t*)(CONFIG_DATA_X_MAXPOINT_OFFSET + 1));
+					rsSendFormat[3] = (*(uint32_t*)CONFIG_DATA_X_MAXPOINT_OFFSET);
+					rsSendFormat[4] = (*(uint32_t*)(CONFIG_DATA_X_MINPOINT_OFFSET + 1));
+					rsSendFormat[5] = (*(uint32_t*)CONFIG_DATA_X_MINPOINT_OFFSET);
+					rsSendFormat[6] = (*(uint32_t*)(CONFIG_DATA_X_MIDDLEPOINT_OFFSET + 1));
+					rsSendFormat[7] = (*(uint32_t*)CONFIG_DATA_X_MIDDLEPOINT_OFFSET);
+					for(i = 1; i < 8; i++)
+					{
+						rsSendFormat[8] += rsSendFormat[i];
+					}
+					HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
+
+				break;
+
+				case COMMAND_YCALIB_READ:
+					rsSendFormat[0] = COMMAND_HEADER;
+					rsSendFormat[1] = COMMAND_YCALIB_READ;
+					rsSendFormat[2] = (*(uint32_t*)(CONFIG_DATA_Y_MAXPOINT_OFFSET + 1));
+					rsSendFormat[3] = (*(uint32_t*)CONFIG_DATA_Y_MAXPOINT_OFFSET);
+					rsSendFormat[4] = (*(uint32_t*)(CONFIG_DATA_Y_MINPOINT_OFFSET + 1));
+					rsSendFormat[5] = (*(uint32_t*)CONFIG_DATA_Y_MINPOINT_OFFSET);
+					rsSendFormat[6] = (*(uint32_t*)(CONFIG_DATA_Y_MIDDLEPOINT_OFFSET + 1));
+					rsSendFormat[7] = (*(uint32_t*)CONFIG_DATA_Y_MIDDLEPOINT_OFFSET);
+					for(i = 1; i < 8; i++)
+					{
+						rsSendFormat[8] += rsSendFormat[i];
+					}
+					HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
+
+				break;
+					//default***********************
+					case COMMAND_DEFAULT_MODSEL_READ:
+					rsSendFormat[0] = COMMAND_HEADER;
+					rsSendFormat[1] = COMMAND_DEFAULT_MODSEL_READ;
+					rsSendFormat[2] = (*(uint32_t*)DEFAULT_CONFIG_DATA_INTERFACE_OFFSET);;
+					rsSendFormat[3] = 0x00;
+					rsSendFormat[4] = 0x00;
+					rsSendFormat[5] = 0x00;
+					rsSendFormat[6] = 0x00;
+					rsSendFormat[7] = 0x00;
+					for(i = 1; i < 8; i++)
+					{
+						rsSendFormat[8] += rsSendFormat[i];
+					}
+					HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
+				break;
+
+				case COMMAND_DEFAULT_XCALIB_READ:
+					rsSendFormat[0] = COMMAND_HEADER;
+					rsSendFormat[1] = COMMAND_DEFAULT_XCALIB_READ;
+					rsSendFormat[2] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_X_MAXPOINT_OFFSET + 1)); //MSB
+					rsSendFormat[3] = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MAXPOINT_OFFSET);		 //LSB
+					rsSendFormat[4] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_X_MINPOINT_OFFSET + 1));
+					rsSendFormat[5] = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MINPOINT_OFFSET);
+					rsSendFormat[6] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_X_MIDDLEPOINT_OFFSET + 1));
+					rsSendFormat[7] = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MIDDLEPOINT_OFFSET);
+
+					for(i = 1; i < 8; i++)
+					{
+						rsSendFormat[8] += rsSendFormat[i];
+					}
+
+					HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
+
+				break;
+
+				case COMMAND_DEFAULT_YCALIB_READ:
+					rsSendFormat[0] = COMMAND_HEADER;
+					rsSendFormat[1] = COMMAND_DEFAULT_YCALIB_READ;
+					rsSendFormat[2] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_Y_MAXPOINT_OFFSET + 1));
+					rsSendFormat[3] = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MAXPOINT_OFFSET);
+					rsSendFormat[4] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_Y_MINPOINT_OFFSET + 1));
+					rsSendFormat[5] = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MINPOINT_OFFSET);
+					rsSendFormat[6] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_Y_MIDDLEPOINT_OFFSET + 1));
+					rsSendFormat[7] = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MIDDLEPOINT_OFFSET);
+					for(i = 1; i < 8; i++)
+					{
+						rsSendFormat[8] += rsSendFormat[i];
+					}
+					HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
+
+				break;
+
+					//default ****************************/
+				case COMMAND_BOOT_MODE://düzenleenecek
+					bootloaderCommand();
+				break;
+
+				case COMMAND_SYSTEM_RESET:
+					sendAckUart();
+					HAL_NVIC_SystemReset();
+				break;
+
+				case COMMAND_CALIBRATION_START:
+					remoteMode = 0;
+					sendAckUart();
+				break;
+
+				case COMMAND_REFRESH_CONFIG_DATA:
+					refreshFlashUserConf(&tempTkkConfig);
+					calculateJostickBorders(&userTkkConfig, &tkkJoystickBorder);
+					remoteMode = 1;
+					sendAckUart();
+				break;
+
+				case COMMAND_SET_DEFAULT_CONFIG_DATA:
+
+				break;
 			}
-			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
-		break;
-
-		case COMMAND_XCALIB_READ:
-			rsSendFormat[0] = COMMAND_HEADER;
-			rsSendFormat[1] = COMMAND_XCALIB_READ;
-			rsSendFormat[2] = (*(uint32_t*)(CONFIG_DATA_X_MAXPOINT_OFFSET + 1));
-			rsSendFormat[3] = (*(uint32_t*)CONFIG_DATA_X_MAXPOINT_OFFSET);
-			rsSendFormat[4] = (*(uint32_t*)(CONFIG_DATA_X_MINPOINT_OFFSET + 1));
-			rsSendFormat[5] = (*(uint32_t*)CONFIG_DATA_X_MINPOINT_OFFSET);
-			rsSendFormat[6] = (*(uint32_t*)(CONFIG_DATA_X_MIDDLEPOINT_OFFSET + 1));
-			rsSendFormat[7] = (*(uint32_t*)CONFIG_DATA_X_MIDDLEPOINT_OFFSET);
-			for(i = 1; i < 8; i++)
-			{
-				rsSendFormat[8] += rsSendFormat[i];
-			}
-			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
-
-		break;
-
-		case COMMAND_YCALIB_READ:
-			rsSendFormat[0] = COMMAND_HEADER;
-			rsSendFormat[1] = COMMAND_YCALIB_READ;
-			rsSendFormat[2] = (*(uint32_t*)(CONFIG_DATA_Y_MAXPOINT_OFFSET + 1));
-			rsSendFormat[3] = (*(uint32_t*)CONFIG_DATA_Y_MAXPOINT_OFFSET);
-			rsSendFormat[4] = (*(uint32_t*)(CONFIG_DATA_Y_MINPOINT_OFFSET + 1));
-			rsSendFormat[5] = (*(uint32_t*)CONFIG_DATA_Y_MINPOINT_OFFSET);
-			rsSendFormat[6] = (*(uint32_t*)(CONFIG_DATA_Y_MIDDLEPOINT_OFFSET + 1));
-			rsSendFormat[7] = (*(uint32_t*)CONFIG_DATA_Y_MIDDLEPOINT_OFFSET);
-			for(i = 1; i < 8; i++)
-			{
-				rsSendFormat[8] += rsSendFormat[i];
-			}
-			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
-
-		break;
-			//default***********************
-			case COMMAND_DEFAULT_MODSEL_READ:
-			rsSendFormat[0] = COMMAND_HEADER;
-			rsSendFormat[1] = COMMAND_DEFAULT_MODSEL_READ;
-			rsSendFormat[2] = (*(uint32_t*)DEFAULT_CONFIG_DATA_INTERFACE_OFFSET);;
-			rsSendFormat[3] = 0x00;
-			rsSendFormat[4] = 0x00;
-			rsSendFormat[5] = 0x00;
-			rsSendFormat[6] = 0x00;
-			rsSendFormat[7] = 0x00;
-			for(i = 1; i < 8; i++)
-			{
-				rsSendFormat[8] += rsSendFormat[i];
-			}
-			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
-		break;
-
-		case COMMAND_DEFAULT_XCALIB_READ:
-			rsSendFormat[0] = COMMAND_HEADER;
-			rsSendFormat[1] = COMMAND_DEFAULT_XCALIB_READ;
-			rsSendFormat[2] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_X_MAXPOINT_OFFSET + 1)); //MSB
-			rsSendFormat[3] = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MAXPOINT_OFFSET);		 //LSB
-			rsSendFormat[4] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_X_MINPOINT_OFFSET + 1));
-			rsSendFormat[5] = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MINPOINT_OFFSET);
-			rsSendFormat[6] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_X_MIDDLEPOINT_OFFSET + 1));
-			rsSendFormat[7] = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MIDDLEPOINT_OFFSET);
-
-			for(i = 1; i < 8; i++)
-			{
-				rsSendFormat[8] += rsSendFormat[i];
-			}
-
-			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
-
-		break;
-
-		case COMMAND_DEFAULT_YCALIB_READ:
-			rsSendFormat[0] = COMMAND_HEADER;
-			rsSendFormat[1] = COMMAND_DEFAULT_YCALIB_READ;
-			rsSendFormat[2] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_Y_MAXPOINT_OFFSET + 1));
-			rsSendFormat[3] = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MAXPOINT_OFFSET);
-			rsSendFormat[4] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_Y_MINPOINT_OFFSET + 1));
-			rsSendFormat[5] = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MINPOINT_OFFSET);
-			rsSendFormat[6] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_Y_MIDDLEPOINT_OFFSET + 1));
-			rsSendFormat[7] = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MIDDLEPOINT_OFFSET);
-			for(i = 1; i < 8; i++)
-			{
-				rsSendFormat[8] += rsSendFormat[i];
-			}
-			HAL_UART_Transmit(&huart1, (uint8_t*)rsSendFormat, 9, 5000);
-
-		break;
-
-			//default ****************************/
-		case COMMAND_BOOT_MODE://düzenleenecek
-			bootloaderCommand();
-		break;
-
-		case COMMAND_SYSTEM_RESET:
-			sendAckUart();
-			HAL_NVIC_SystemReset();
-		break;
-
-		case COMMAND_CALIBRATION_START:
-			remoteMode = 0;
-			sendAckUart();
-		break;
-
-		case COMMAND_REFRESH_CONFIG_DATA:
-			refreshFlashUserConf(&tempTkkConfig);
-			calculateJostickBorders(&userTkkConfig, &tkkJoystickBorder);
-			remoteMode = 1;
-			sendAckUart();
-		break;
-
-		case COMMAND_SET_DEFAULT_CONFIG_DATA:
-
-		break;
 	}
+
+	else if(userTkkConfig.tkkModSelection == TKK_MOD_CAN)
+	{
+		//CAN
+		CAN_TxHeaderTypeDef txHeader = {0};
+
+		txHeader.StdId = 0x321;
+		txHeader.IDE   = CAN_ID_STD;
+		txHeader.RTR   = CAN_RTR_DATA;
+		txHeader.DLC   = 8;
+		txHeader.TransmitGlobalTime = DISABLE;
+
+//		uint8_t data[8] = { rs422Frame_[0],
+//							rs422Frame_[1],
+//							rs422Frame_[2],
+//							rs422Frame_[3],
+//							rs422Frame_[4],
+//							rs422Frame_[5],
+//							rs422Frame_[6],
+//							rs422Frame_[7]};
+
+		uint32_t txMailbox;
+
+
+
+		switch (rxBuffer[1])
+			{
+				case COMMAND_MODSEL_WRITE:
+					tempTkkConfig.tkkModSelection = rxBuffer[1];
+					sendAckCan();
+				break;
+
+				case COMMAND_XCALIB_WRITE:
+					tempTkkConfig.xMax = rxBuffer[1]<<8 | rxBuffer[2];
+					tempTkkConfig.xMin = rxBuffer[3]<<8 | rxBuffer[4];
+					tempTkkConfig.xMid = rxBuffer[5]<<8 | rxBuffer[6];
+					sendAckCan();
+				break;
+
+				case COMMAND_YCALIB_WRITE:
+					tempTkkConfig.yMax = rxBuffer[1]<<8 | rxBuffer[2];
+					tempTkkConfig.yMin = rxBuffer[3]<<8 | rxBuffer[4];
+					tempTkkConfig.yMid = rxBuffer[5]<<8 | rxBuffer[6];
+					sendAckCan();
+				break;
+
+				case COMMAND_DEBOUNCE_WRITE://debounce tarafi düzenlenecek
+				break;
+
+				case COMMAND_MODSEL_READ:
+					canSendFormat[0] = COMMAND_HEADER;
+					canSendFormat[1] = COMMAND_MODSEL_READ;
+					canSendFormat[2] = (*(uint32_t*)CONFIG_DATA_INTERFACE_OFFSET);;
+					canSendFormat[3] = 0x00;
+					canSendFormat[4] = 0x00;
+					canSendFormat[5] = 0x00;
+					canSendFormat[6] = 0x00;
+					canSendFormat[7] = 0x00;
+
+					if (HAL_CAN_AddTxMessage(&hcan, &txHeader, canSendFormat, &txMailbox) != HAL_OK)
+					{
+					// TX kuyruğu dolu vs. durumunda hata yönetimi
+					}
+				break;
+
+				case COMMAND_XCALIB_READ:
+					canSendFormat[0] = COMMAND_HEADER;
+					canSendFormat[1] = COMMAND_XCALIB_READ;
+					canSendFormat[2] = (*(uint32_t*)(CONFIG_DATA_X_MAXPOINT_OFFSET + 1));
+					canSendFormat[3] = (*(uint32_t*)CONFIG_DATA_X_MAXPOINT_OFFSET);
+					canSendFormat[4] = (*(uint32_t*)(CONFIG_DATA_X_MINPOINT_OFFSET + 1));
+					canSendFormat[5] = (*(uint32_t*)CONFIG_DATA_X_MINPOINT_OFFSET);
+					canSendFormat[6] = (*(uint32_t*)(CONFIG_DATA_X_MIDDLEPOINT_OFFSET + 1));
+					canSendFormat[7] = (*(uint32_t*)CONFIG_DATA_X_MIDDLEPOINT_OFFSET);
+
+					if (HAL_CAN_AddTxMessage(&hcan, &txHeader, canSendFormat, &txMailbox) != HAL_OK)
+					{
+					// TX kuyruğu dolu vs. durumunda hata yönetimi
+					}
+				break;
+
+				case COMMAND_YCALIB_READ:
+					canSendFormat[0] = COMMAND_HEADER;
+					canSendFormat[1] = COMMAND_YCALIB_READ;
+					canSendFormat[2] = (*(uint32_t*)(CONFIG_DATA_Y_MAXPOINT_OFFSET + 1));
+					canSendFormat[3] = (*(uint32_t*)CONFIG_DATA_Y_MAXPOINT_OFFSET);
+					canSendFormat[4] = (*(uint32_t*)(CONFIG_DATA_Y_MINPOINT_OFFSET + 1));
+					canSendFormat[5] = (*(uint32_t*)CONFIG_DATA_Y_MINPOINT_OFFSET);
+					canSendFormat[6] = (*(uint32_t*)(CONFIG_DATA_Y_MIDDLEPOINT_OFFSET + 1));
+					canSendFormat[7] = (*(uint32_t*)CONFIG_DATA_Y_MIDDLEPOINT_OFFSET);
+
+					if (HAL_CAN_AddTxMessage(&hcan, &txHeader, canSendFormat, &txMailbox) != HAL_OK)
+					{
+					// TX kuyruğu dolu vs. durumunda hata yönetimi
+					}
+				break;
+					//default***********************
+					case COMMAND_DEFAULT_MODSEL_READ:
+					canSendFormat[0] = COMMAND_HEADER;
+					canSendFormat[1] = COMMAND_DEFAULT_MODSEL_READ;
+					canSendFormat[2] = (*(uint32_t*)DEFAULT_CONFIG_DATA_INTERFACE_OFFSET);;
+					canSendFormat[3] = 0x00;
+					canSendFormat[4] = 0x00;
+					canSendFormat[5] = 0x00;
+					canSendFormat[6] = 0x00;
+					canSendFormat[7] = 0x00;
+
+					if (HAL_CAN_AddTxMessage(&hcan, &txHeader, canSendFormat, &txMailbox) != HAL_OK)
+					{
+					// TX kuyruğu dolu vs. durumunda hata yönetimi
+					}
+				break;
+
+				case COMMAND_DEFAULT_XCALIB_READ:
+					canSendFormat[0] = COMMAND_HEADER;
+					canSendFormat[1] = COMMAND_DEFAULT_XCALIB_READ;
+					canSendFormat[2] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_X_MAXPOINT_OFFSET + 1)); //MSB
+					canSendFormat[3] = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MAXPOINT_OFFSET);		 //LSB
+					canSendFormat[4] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_X_MINPOINT_OFFSET + 1));
+					canSendFormat[5] = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MINPOINT_OFFSET);
+					canSendFormat[6] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_X_MIDDLEPOINT_OFFSET + 1));
+					canSendFormat[7] = (*(uint32_t*)DEFAULT_CONFIG_DATA_X_MIDDLEPOINT_OFFSET);
+
+					if (HAL_CAN_AddTxMessage(&hcan, &txHeader, canSendFormat, &txMailbox) != HAL_OK)
+					{
+					// TX kuyruğu dolu vs. durumunda hata yönetimi
+					}
+				break;
+
+				case COMMAND_DEFAULT_YCALIB_READ:
+					canSendFormat[0] = COMMAND_HEADER;
+					canSendFormat[1] = COMMAND_DEFAULT_YCALIB_READ;
+					canSendFormat[2] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_Y_MAXPOINT_OFFSET + 1));
+					canSendFormat[3] = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MAXPOINT_OFFSET);
+					canSendFormat[4] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_Y_MINPOINT_OFFSET + 1));
+					canSendFormat[5] = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MINPOINT_OFFSET);
+					canSendFormat[6] = (*(uint32_t*)(DEFAULT_CONFIG_DATA_Y_MIDDLEPOINT_OFFSET + 1));
+					canSendFormat[7] = (*(uint32_t*)DEFAULT_CONFIG_DATA_Y_MIDDLEPOINT_OFFSET);
+
+					if (HAL_CAN_AddTxMessage(&hcan, &txHeader, canSendFormat, &txMailbox) != HAL_OK)
+					{
+					// TX kuyruğu dolu vs. durumunda hata yönetimi
+					}
+				break;
+
+					//default ****************************/
+				case COMMAND_BOOT_MODE://düzenleenecek
+					bootloaderCommand();
+				break;
+
+				case COMMAND_SYSTEM_RESET:
+					sendAckCan();
+					HAL_NVIC_SystemReset();
+				break;
+
+				case COMMAND_CALIBRATION_START:
+					remoteMode = 0;
+					sendAckCan();
+				break;
+
+				case COMMAND_REFRESH_CONFIG_DATA:
+					refreshFlashUserConf(&tempTkkConfig);
+					calculateJostickBorders(&userTkkConfig, &tkkJoystickBorder);
+					remoteMode = 1;
+					sendAckCan();
+				break;
+
+				case COMMAND_SET_DEFAULT_CONFIG_DATA:
+
+				break;
+			}
+	}
+
 }
 
 
@@ -1287,18 +1471,20 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan_arg)
 {
   CAN_RxHeaderTypeDef rxHeader;
   uint8_t rxData[8];
-
-  if (HAL_CAN_GetRxMessage(hcan_arg, CAN_RX_FIFO0, &rxHeader, rxData) != HAL_OK)
+  if(userTkkConfig.tkkModSelection == TKK_MOD_CAN)
   {
-    return;
-  }
+	  if (HAL_CAN_GetRxMessage(hcan_arg, CAN_RX_FIFO0, &rxHeader, rxData) != HAL_OK)
+	    {
+	      return;
+	    }
 
-  if (rxHeader.IDE == CAN_ID_STD && rxHeader.RTR == CAN_RTR_DATA)
-  {
-	  if(rxHeader.StdId == 0x101)
-	  {
-		    checkCommand(rxData);
-	  }
+	    if (rxHeader.IDE == CAN_ID_STD && rxHeader.RTR == CAN_RTR_DATA)
+	    {
+	  	  if(rxHeader.StdId == 0x101)
+	  	  {
+	  		    checkCommand(rxData);
+	  	  }
+	    }
   }
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
@@ -1306,42 +1492,45 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	unsigned int i;
 	tempRxDataIn = rxDataIn;
 
-	if(rxBufferDataCounter==0 && rxDataIn==0xA5)
+	if(userTkkConfig.tkkModSelection == TKK_MOD_RS422)
 	{
-		rxBuffer[0] = rxDataIn;
-		rxBufferDataCounter++;
-	}
-	else if(rxBufferDataCounter>0 && rxBufferDataCounter<8)
-	{
-		rxBuffer[rxBufferDataCounter] = rxDataIn;
-		rxBufferDataCounter++;
-	}
-	else if(rxBufferDataCounter==8)
-	{
-		/* checksum control */
-		rxDataCheksum = 0;
-		rxBuffer[rxBufferDataCounter] = rxDataIn;
+		if(rxBufferDataCounter==0 && rxDataIn==0xA5)
+			{
+				rxBuffer[0] = rxDataIn;
+				rxBufferDataCounter++;
+			}
+			else if(rxBufferDataCounter>0 && rxBufferDataCounter<8)
+			{
+				rxBuffer[rxBufferDataCounter] = rxDataIn;
+				rxBufferDataCounter++;
+			}
+			else if(rxBufferDataCounter==8)
+			{
+				/* checksum control */
+				rxDataCheksum = 0;
+				rxBuffer[rxBufferDataCounter] = rxDataIn;
 
-		for(i=1;i<9;i++)
-		{
-			rxDataCheksum += rxBuffer[i];
-		}
-		if(rxDataCheksum==0)
-		{
-			/* checkSum OK, process the command */
-			checkCommand(rxBuffer);
-			rxBufferDataCounter = 0; /* test breakpoint icin */
-		}
-		else
-		{
-			/* error, do nothing*/
-			errorCounter++;
-		}
-		rxBufferDataCounter = 0;
-	}
-	else
-	{
-		rxBufferDataCounter = 0;
+				for(i=1;i<9;i++)
+				{
+					rxDataCheksum += rxBuffer[i];
+				}
+				if(rxDataCheksum==0)
+				{
+					/* checkSum OK, process the command */
+					checkCommand(rxBuffer);
+					rxBufferDataCounter = 0; /* test breakpoint icin */
+				}
+				else
+				{
+					/* error, do nothing*/
+					errorCounter++;
+				}
+				rxBufferDataCounter = 0;
+			}
+			else
+			{
+				rxBufferDataCounter = 0;
+			}
 	}
 }
 
@@ -1406,6 +1595,7 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
+
   }
   /* USER CODE END Error_Handler_Debug */
 }
