@@ -118,6 +118,7 @@ CAN_LastRx_t g_lastRx;
 //receive
 void sendAckUart(void);					//OK
 void sendAckCan(void);
+void sendDebugControl(void);
 void checkCommand(uint8_t* rxBuffer); 	//OK
 //UART variables
 uint8_t tempRxDataIn;
@@ -199,6 +200,7 @@ void checkBootloader(void);
 
 uint16_t bootValue = 0;
 uint8_t flashReadValue = 0;
+uint8_t firstLoadValue = 0;
 /* USER CODE END 0 */
 
 /**
@@ -241,7 +243,13 @@ int main(void)
 	checkBootloader();
 
 /*Baslangic için default config data atamasi*/
-	writeDefaultConfigPage();
+	firstLoadValue = (*(uint32_t*)DEFAULT_CONFIG_DATA_INTERFACE_OFFSET);
+	if(firstLoadValue == 0xFF)
+	{
+		writeDefaultConfigPage();
+		//sendDebugControl();
+	}
+
 	HAL_TIM_Base_Start_IT(&htim2);
 	HAL_TIM_Base_Start_IT(&htim3);
 	HAL_UART_Receive_DMA(&huart1, &rxDataIn, 1);
@@ -341,7 +349,7 @@ void configurationSettings(void)
 {
 	//check for DEFAULT/USER Configuration
 	flashReadValue = (*(uint32_t*)CONFIG_DATA_DEFAULT_SELECT);
-	flashReadValue = 0xff;
+
 	if(flashReadValue == 0xFF)
 	{
 		loadDefaultValues(&userTkkConfig);
@@ -357,7 +365,7 @@ void mainLoop(void)
 {
 	if(sampleAnalogInputs == true)
 		{
-
+			//calculateJostickBorders(&userTkkConfig, &tkkJoystickBorder); // kaldırılacak
 			//averageAnalogInputs(&AnADC_Values[0], &AnADC_Read[0], ANALOG_COUNT, AVERAGE_WINDOW);
 			averageAnalogInputs(AnADC_Values, AnADC_Read, ANALOG_COUNT, AVERAGE_WINDOW);
 			calculateAxisData(&tkkJoystickBorder, &AnADC_Values[0], &fittedAnAdc_Values[0], XAXIS);
@@ -441,98 +449,68 @@ void calculateAxisData(joystickBorder* tempJoystickBorder, uint32_t* tempAnADC_V
 	errX = GPIO_PIN_RESET;
 	errY = GPIO_PIN_RESET;
 	//calculate x-Axis
-	if(axisData == XAXIS)
+	if(axisData == 1)
 	{
 		if(*tempAnADC_Value <= joystickBorderPtr->xLeftLow)
 		{
 			//*fittedAnAdc_Values = -32766;
-			//*fittedAnAdc_Values = -2048;  #huzeyfe
-			*fittedAnAdc_Values = 0;
+			*fittedAnAdc_Values = -2048;
 			errX = GPIO_PIN_SET;
 		}
 		else if(*tempAnADC_Value >= joystickBorderPtr->xRightHigh)
 		{
 			//*fittedAnAdc_Values = 32766;
 			errX = GPIO_PIN_SET;
-			//*fittedAnAdc_Values = 2047;  #huzeyfe
-			*fittedAnAdc_Values = 65535;
+			*fittedAnAdc_Values = 2047;
 		}
 
 		else if(*tempAnADC_Value >= joystickBorderPtr -> xRightLow)
 		{
-//			*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->xRightLow))) * 2047) / (joystickBorderPtr -> xRightRange); #huzeyfe
-//			if(*fittedAnAdc_Values >= 2047)
-//			{
-//				*fittedAnAdc_Values = 2047;
-//			}
-
-			*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->xRightLow))) * 65535) / (joystickBorderPtr -> xRightRange);
-			if(*fittedAnAdc_Values >= 65535)
+			*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->xRightLow))) * 2047) / (joystickBorderPtr -> xRightRange);
+			if(*fittedAnAdc_Values >= 2047)
 			{
-				*fittedAnAdc_Values = 65535;
+				*fittedAnAdc_Values = 2047;
 			}
 		}
 		else if(*tempAnADC_Value < (joystickBorderPtr -> xLeftHigh))
 		{
-//			*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->xLeftHigh) - (int)(*tempAnADC_Value))) * (int)2047) / (joystickBorderPtr -> xLeftRange)); #huzeyfe
-//			if(*fittedAnAdc_Values <= -2048)
-//			{
-//				*fittedAnAdc_Values = -2048;
-//			}
-
-			*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->xLeftHigh) - (int)(*tempAnADC_Value))) * (int)65535) / (joystickBorderPtr -> xLeftRange));
-			if(*fittedAnAdc_Values <= 0)
+			*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->xLeftHigh) - (int)(*tempAnADC_Value))) * (int)2047) / (joystickBorderPtr -> xLeftRange));
+			if(*fittedAnAdc_Values <= -2048)
 			{
-				*fittedAnAdc_Values = 0;
+				*fittedAnAdc_Values = -2048;
 			}
 		}
 	}
 
-	else
-	{
-		if(*tempAnADC_Value <= joystickBorderPtr->yDownLow)
-		{
-			//*fittedAnAdc_Values = 2048;
-			errY = GPIO_PIN_SET;
-			//*fittedAnAdc_Values = -2048;  #huzeyfe
-			*fittedAnAdc_Values = 0;
-		}
-		else if(*tempAnADC_Value >= joystickBorderPtr->yUpHigh)
-		{
-			//*fittedAnAdc_Values = -2048;
-			//*fittedAnAdc_Values = 2047;
-			*fittedAnAdc_Values = 65535;
-			errY = GPIO_PIN_SET;
-		}
-		else if(*tempAnADC_Value >= joystickBorderPtr -> yUpLow)
-		{
-//			*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->yUpLow))) * 2047) / (joystickBorderPtr -> yUpRange); #huzeyfe
-//			if(*fittedAnAdc_Values >= 2047)
-//			{
-//				*fittedAnAdc_Values = 2047;
-//			}
-
-			*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->yUpLow))) * 65535) / (joystickBorderPtr -> yUpRange);
-			if(*fittedAnAdc_Values >= 65535)
+			else
 			{
-				*fittedAnAdc_Values = 65535;
-			}
-		}
-		else if(*tempAnADC_Value < (joystickBorderPtr -> yDownHigh))
-		{
-//			*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->yDownHigh) - (int)(*tempAnADC_Value))) * (int)2047) / (joystickBorderPtr -> yDownRange)); #huzeyfe
-//
-//			if(*fittedAnAdc_Values <= -2048)
-//			{
-//				*fittedAnAdc_Values = -2048;
-//			}
-
-			*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->yDownHigh) - (int)(*tempAnADC_Value))) * (int)65535) / (joystickBorderPtr -> yDownRange));
-
-			if(*fittedAnAdc_Values <= 0)
+				if(*tempAnADC_Value <= joystickBorderPtr->yDownLow)
 			{
-				*fittedAnAdc_Values = 0;
+				//*fittedAnAdc_Values = 2048;
+				errY = GPIO_PIN_SET;
+				*fittedAnAdc_Values = -2048;
 			}
+			else if(*tempAnADC_Value >= joystickBorderPtr->yUpHigh)
+			{
+				//*fittedAnAdc_Values = -2048;
+				*fittedAnAdc_Values = 2047;
+				errY = GPIO_PIN_SET;
+			}
+			else if(*tempAnADC_Value >= joystickBorderPtr -> yUpLow)
+			{
+				*fittedAnAdc_Values = (((int)((*tempAnADC_Value) - (joystickBorderPtr->yUpLow))) * 2047) / (joystickBorderPtr -> yUpRange);
+				if(*fittedAnAdc_Values >= 2047)
+				{
+					*fittedAnAdc_Values = 2047;
+				}
+			}
+			else if(*tempAnADC_Value < (joystickBorderPtr -> yDownHigh))
+			{
+				*fittedAnAdc_Values = -((((int)((int)(joystickBorderPtr->yDownHigh) - (int)(*tempAnADC_Value))) * (int)2047) / (joystickBorderPtr -> yDownRange));
+				if(*fittedAnAdc_Values <= -2048)
+				{
+					*fittedAnAdc_Values = -2048;
+				}
 		}
 
 	}
@@ -941,11 +919,11 @@ void sendUartFrame(UART_HandleTypeDef *huart,uint8_t* rs422Frame_, uint16_t Size
 
 		if(remoteMode == 0)
 		{
-			rs422Frame_[4] = (AnADC_Values[0] >> 8) & 0xFF;// & 0x1F;			//AN2_7-0
-			rs422Frame_[5] =  AnADC_Values[0]       & 0xFF; 					//AN2_15-8
+			rs422Frame_[4] = ((AnADC_Values[0]/100) >> 8) & 0xFF;// & 0x1F;			//AN2_7-0
+			rs422Frame_[5] =  (AnADC_Values[0]/100)       & 0xFF; 					//AN2_15-8
 
-			rs422Frame_[6] = (AnADC_Values[1] >> 8) & 0xFF;      				//AN3_7-0
-			rs422Frame_[7] =  AnADC_Values[1]       & 0xFF; 					//AN3_15-8
+			rs422Frame_[6] = ((AnADC_Values[1]/100) >> 8) & 0xFF;      				//AN3_7-0
+			rs422Frame_[7] =  (AnADC_Values[1]/100)       & 0xFF; 					//AN3_15-8
 		}
 		else
 		{
@@ -959,7 +937,7 @@ void sendUartFrame(UART_HandleTypeDef *huart,uint8_t* rs422Frame_, uint16_t Size
 	//CAN
 	CAN_TxHeaderTypeDef txHeader = {0};
 
-	txHeader.StdId = 0x321;
+	txHeader.StdId = 0x242;
 	txHeader.IDE   = CAN_ID_STD;
 	txHeader.RTR   = CAN_RTR_DATA;
 	txHeader.DLC   = 8;
@@ -1109,7 +1087,7 @@ void sendAckCan(void)
 	CAN_TxHeaderTypeDef txHeader = {0};
 	uint32_t txMailbox;
 
-	txHeader.StdId = 0x321;
+	txHeader.StdId = 0x444;
 	txHeader.IDE   = CAN_ID_STD;
 	txHeader.RTR   = CAN_RTR_DATA;
 	txHeader.DLC   = 8;
@@ -1132,6 +1110,33 @@ void sendAckCan(void)
 	}
 }
 
+void sendDebugControl(void)
+{
+	CAN_TxHeaderTypeDef txHeader = {0};
+	uint32_t txMailbox;
+
+	txHeader.StdId = 0x333;
+	txHeader.IDE   = CAN_ID_STD;
+	txHeader.RTR   = CAN_RTR_DATA;
+	txHeader.DLC   = 8;
+	txHeader.TransmitGlobalTime = DISABLE;
+
+	uint8_t canACK[9];
+
+	canACK[0] = 0xBB;
+	canACK[1] = 0xBB;
+	canACK[2] = 0xBB;
+	canACK[3] = 0xBB;
+	canACK[4] = 0x00;
+	canACK[5] = 0x00;
+	canACK[6] = 0x00;
+	canACK[7] = 0x00;
+
+	if (HAL_CAN_AddTxMessage(&hcan, &txHeader, canACK, &txMailbox) != HAL_OK)
+	{
+		// TX kuyruğu dolu vs. durumunda hata yönetimi
+	}
+}
 void checkCommand(uint8_t* rxBuffer)
 {
 	volatile uint32_t i = 0;
@@ -1319,21 +1324,21 @@ void checkCommand(uint8_t* rxBuffer)
 		switch (rxBuffer[1])
 			{
 				case COMMAND_MODSEL_WRITE:
-					tempTkkConfig.tkkModSelection = rxBuffer[1];
+					tempTkkConfig.tkkModSelection = rxBuffer[2];
 					sendAckCan();
 				break;
 
 				case COMMAND_XCALIB_WRITE:
-					tempTkkConfig.xMax = rxBuffer[1]<<8 | rxBuffer[2];
-					tempTkkConfig.xMin = rxBuffer[3]<<8 | rxBuffer[4];
-					tempTkkConfig.xMid = rxBuffer[5]<<8 | rxBuffer[6];
+					tempTkkConfig.xMax = rxBuffer[2]<<8 | rxBuffer[3];
+					tempTkkConfig.xMin = rxBuffer[4]<<8 | rxBuffer[5];
+					tempTkkConfig.xMid = rxBuffer[6]<<8 | rxBuffer[7];
 					sendAckCan();
 				break;
 
 				case COMMAND_YCALIB_WRITE:
-					tempTkkConfig.yMax = rxBuffer[1]<<8 | rxBuffer[2];
-					tempTkkConfig.yMin = rxBuffer[3]<<8 | rxBuffer[4];
-					tempTkkConfig.yMid = rxBuffer[5]<<8 | rxBuffer[6];
+					tempTkkConfig.yMax = rxBuffer[2]<<8 | rxBuffer[3];
+					tempTkkConfig.yMin = rxBuffer[4]<<8 | rxBuffer[5];
+					tempTkkConfig.yMid = rxBuffer[6]<<8 | rxBuffer[7];
 					sendAckCan();
 				break;
 
@@ -1353,6 +1358,10 @@ void checkCommand(uint8_t* rxBuffer)
 					if (HAL_CAN_AddTxMessage(&hcan, &txHeader, canSendFormat, &txMailbox) != HAL_OK)
 					{
 					// TX kuyruğu dolu vs. durumunda hata yönetimi
+					}
+					else
+					{
+						sendAckCan();
 					}
 				break;
 
@@ -1459,7 +1468,7 @@ void checkCommand(uint8_t* rxBuffer)
 				break;
 
 				case COMMAND_SET_DEFAULT_CONFIG_DATA:
-
+					sendAckCan();
 				break;
 			}
 	}
@@ -1469,23 +1478,35 @@ void checkCommand(uint8_t* rxBuffer)
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan_arg)
 {
-  CAN_RxHeaderTypeDef rxHeader;
-  uint8_t rxData[8];
-  if(userTkkConfig.tkkModSelection == TKK_MOD_CAN)
-  {
-	  if (HAL_CAN_GetRxMessage(hcan_arg, CAN_RX_FIFO0, &rxHeader, rxData) != HAL_OK)
-	    {
-	      return;
-	    }
+	CAN_RxHeaderTypeDef rxHeader;
+	uint8_t rxData[8];
 
-	    if (rxHeader.IDE == CAN_ID_STD && rxHeader.RTR == CAN_RTR_DATA)
-	    {
-	  	  if(rxHeader.StdId == 0x101)
-	  	  {
-	  		    checkCommand(rxData);
-	  	  }
-	    }
-  }
+	if (HAL_CAN_GetRxMessage(hcan_arg, CAN_RX_FIFO0, &rxHeader, rxData) != HAL_OK)
+	{
+	  return;
+	}
+
+	if (rxHeader.IDE == CAN_ID_STD && rxHeader.RTR == CAN_RTR_DATA)
+	{
+	  if(rxHeader.StdId == 0x101)
+	  {
+			checkCommand(rxData);
+	  }
+	  else if(rxHeader.StdId == 0X105)
+	  {
+		  if(rxData[0] == 0xDE &&
+			 rxData[1] == 0xAD &&
+			 rxData[2] == 0x42 &&
+			 rxData[3] == 0x42 &&
+			 rxData[4] == 0x42 &&
+			 rxData[5] == 0x42 &&
+			 rxData[6] == 0xDE &&
+			 rxData[7] == 0xAD)
+		  {
+			  userTkkConfig.tkkModSelection = TKK_MOD_CAN;
+		  }
+	  }
+	}
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
